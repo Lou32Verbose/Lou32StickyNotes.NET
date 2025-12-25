@@ -1,0 +1,291 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:StickyNotesClassic.App.ViewModels"
+        mc:Ignorable="d" d:DesignWidth="220" d:DesignHeight="200"
+        x:Class="StickyNotesClassic.App.Views.NoteWindow"
+        x:DataType="vm:NoteWindowViewModel"
+        Title="Sticky Note"
+        Width="330" Height="300"
+        MinWidth="210" MinHeight="180"
+        SystemDecorations="None"
+        TransparencyLevelHint="Transparent"
+        Background="Transparent"
+        CanResize="True"
+        ExtendClientAreaToDecorationsHint="True"
+        Topmost="{Binding IsTopmost}">
+
+    <Window.Styles>
+        <StyleInclude Source="/Themes/ClassicTheme.axaml"/>
+        
+        <!-- Override TextBox styles to remove hover/focus effects and borders -->
+        <Style Selector="TextBox">
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+        </Style>
+        
+        <Style Selector="TextBox:pointerover /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+        </Style>
+        
+        <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+        </Style>
+        
+        <Style Selector="TextBox /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+        </Style>
+        
+        <!-- Visual Effects Styles -->
+        
+        <!-- Enhanced Shadow -->
+        <Style Selector="Border.note-container">
+            <Setter Property="BoxShadow" Value="0 3 10 0 #40000000"/>
+        </Style>
+        <Style Selector="Border.note-container.enhanced-shadow">
+            <Setter Property="BoxShadow" Value="0 4 20 0 #50000000, 0 2 8 0 #30000000"/>
+        </Style>
+        
+        <!-- Header Icon Hover -->
+        <Style Selector="Button.header-icon">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="CornerRadius" Value="3"/>
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.15"/>
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Button.header-icon:pointerover">
+            <Setter Property="Background" Value="#20000000"/>
+        </Style>
+        
+        <!-- Text Shadow -->
+        <Style Selector="TextBox.text-shadow">
+            <Setter Property="Effect">
+                <DropShadowEffect BlurRadius="2" OffsetX="0" OffsetY="1" Color="#40000000"/>
+            </Setter>
+        </Style>
+        
+        <!-- Context Menu Text Color -->
+        <Style Selector="MenuItem">
+            <Setter Property="Foreground" Value="#000000"/>
+        </Style>
+        <Style Selector="MenuItem:pointerover">
+            <Setter Property="Foreground" Value="#000000"/>
+        </Style>
+        <Style Selector="MenuItem:pointerover /template/ ContentPresenter#PART_HeaderPresenter">
+            <Setter Property="Foreground" Value="#000000"/>
+        </Style>
+        <Style Selector="MenuItem:pointerover /template/ TextBlock#PART_InputGestureText">
+            <Setter Property="Foreground" Value="#666666"/>
+        </Style>
+        
+        <!-- TextBox Watermark (Placeholder) Color -->
+        <Style Selector="TextBox /template/ TextBlock#PART_Watermark">
+            <Setter Property="Foreground" Value="#999999"/>
+        </Style>
+        <Style Selector="TextBox:pointerover /template/ TextBlock#PART_Watermark">
+            <Setter Property="Foreground" Value="#999999"/>
+        </Style>
+    </Window.Styles>
+
+    <!-- Main Container with Shadow -->
+    <Border CornerRadius="0"
+            BorderThickness="1"
+            Background="{Binding CurrentTheme.Fill}"
+            BorderBrush="{Binding CurrentTheme.Border}"
+            Classes="note-container"
+            Classes.enhanced-shadow="{Binding EnableEnhancedShadow}">
+
+        <Grid RowDefinitions="24,*">
+
+            <!-- Header Strip -->
+            <Border Grid.Row="0"
+                    x:Name="HeaderBorder"
+                    CornerRadius="0"
+                    Padding="8,4,6,4"
+                    Classes.glossy="{Binding EnableGlossyHeader}">
+                
+                <!-- Conditional Gradient Backgrounds -->
+                <Border.Styles>
+                    <!-- Simple gradient (default) -->
+                    <Style Selector="Border:not(.glossy)">
+                        <Setter Property="Background">
+                            <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                                <GradientStop Offset="0" Color="{Binding CurrentTheme.FillHighlight}"/>
+                                <GradientStop Offset="1" Color="{Binding CurrentTheme.Fill}"/>
+                            </LinearGradientBrush>
+                        </Setter>
+                    </Style>
+                    <!-- Glossy gradient (Windows 7 style) -->
+                    <Style Selector="Border.glossy">
+                        <Setter Property="Background">
+                            <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                                <GradientStop Offset="0" Color="{Binding CurrentTheme.FillHighlight}"/>
+                                <GradientStop Offset="0.5" Color="{Binding CurrentTheme.Fill}"/>
+                                <GradientStop Offset="1" Color="{Binding CurrentTheme.FillDark}"/>
+                            </LinearGradientBrush>
+                        </Setter>
+                    </Style>
+                </Border.Styles>
+
+                <Grid ColumnDefinitions="*,Auto">
+                    
+                    <!-- Title Text (Optional) -->
+                    <TextBlock Grid.Column="0"
+                               Text="Sticky Notes"
+                               FontSize="10"
+                               Foreground="#666666"
+                               VerticalAlignment="Center"
+                               IsVisible="False"/>
+
+                    <!-- Header Icons (Right-aligned) -->
+                    <StackPanel Grid.Column="1"
+                                Orientation="Horizontal"
+                                Spacing="4">
+
+                        <!-- Topmost (Pin) Icon -->
+                        <Button Width="18" Height="18"
+                                Padding="0"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Command="{Binding ToggleTopmostCommand}"
+                                ToolTip.Tip="Always on top">
+                            <Path Width="12" Height="12"
+                                  Fill="{Binding IsTopmost, Converter={StaticResource TopmostIconBrushConverter}}"
+                                  Data="M8,2 L10,6 L14,6 L11,9 L12,13 L8,11 L4,13 L5,9 L2,6 L6,6 Z"
+                                  Stretch="Uniform"/>
+                        </Button>
+
+                        <!-- New Note (+) Icon -->
+                        <Button Width="18" Height="18"
+                                Padding="0"
+                                Classes="header-icon"
+                                BorderThickness="0"
+                                Command="{Binding CreateNewNoteCommand}"
+                                ToolTip.Tip="New note">
+                            <Path Width="12" Height="12"
+                                  Fill="#555555"
+                                  Data="M8,2 L8,14 M2,8 L14,8"
+                                  Stroke="#555555"
+                                  StrokeThickness="2"
+                                  Stretch="Uniform"/>
+                        </Button>
+
+                        <!-- Close (X) Icon -->
+                        <Button Width="18" Height="18"
+                                Padding="0"
+                                Classes="header-icon"
+                                BorderThickness="0"
+                                Command="{Binding CloseNoteCommand}"
+                                ToolTip.Tip="Delete note">
+                            <Path Width="12" Height="12"
+                                  Fill="#555555"
+                                  Data="M3,3 L13,13 M13,3 L3,13"
+                                  Stroke="#555555"
+                                  StrokeThickness="2"
+                                  Stretch="Uniform"/>
+                        </Button>
+
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Body / Editor -->
+            <Border Grid.Row="1"
+                    x:Name="NoteBodyBorder"
+                    Padding="10"
+                    Classes.gradient="{Binding EnableBackgroundGradient}">
+                
+                <!-- Conditional Background Styles -->
+                <Border.Styles>
+                    <!-- Solid background (default) -->
+                    <Style Selector="Border:not(.gradient)">
+                        <Setter Property="Background" Value="{Binding CurrentTheme.Fill}"/>
+                    </Style>
+                    <!-- Gradient background (Windows 7 style) -->
+                    <Style Selector="Border.gradient">
+                        <Setter Property="Background">
+                            <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                                <GradientStop Offset="0" Color="{Binding CurrentTheme.Fill}"/>
+                                <GradientStop Offset="1" Color="{Binding CurrentTheme.FillDark}"/>
+                            </LinearGradientBrush>
+                        </Setter>
+                    </Style>
+                </Border.Styles>
+
+                <Grid>
+                    <!-- Text Editor with Context Menu -->
+                    <TextBox Name="EditorTextBox"
+                             Text="{Binding ContentText}"
+                             AcceptsReturn="True"
+                             TextWrapping="Wrap"
+                             BorderThickness="0"
+                             Background="Transparent"
+                             Foreground="#000000"
+                             CaretBrush="#000000"
+                             FontFamily="{Binding FontFamily}"
+                             FontSize="{Binding FontSize}"
+                             Watermark="Type to add a note..."
+                             VerticalAlignment="Stretch"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto"
+                             Classes.text-shadow="{Binding EnableTextShadow}">
+                        
+                        <!-- Context Menu -->
+                        <TextBox.ContextMenu>
+                            <ContextMenu>
+                                <!-- Edit Operations -->
+                                <MenuItem Header="Cut" InputGesture="Ctrl+X" Command="{Binding $parent[TextBox].Cut}" FontSize="11"/>
+                                <MenuItem Header="Copy" InputGesture="Ctrl+C" Command="{Binding $parent[TextBox].Copy}" FontSize="11"/>
+                                <MenuItem Header="Paste" InputGesture="Ctrl+V" Command="{Binding $parent[TextBox].Paste}" FontSize="11"/>
+                                <Separator/>
+                                <MenuItem Header="Delete" Command="{Binding $parent[TextBox].Clear}" FontSize="11"/>
+                                <MenuItem Header="Select All" InputGesture="Ctrl+A" Command="{Binding $parent[TextBox].SelectAll}" FontSize="11"/>
+                                <Separator/>
+                                
+                                <!-- Color Picker Submenu -->
+                                <MenuItem Header="Color" FontSize="11">
+                                    <MenuItem Header="🟡 Yellow" Command="{Binding ChangeColorCommand}" CommandParameter="0" FontSize="11"/>
+                                    <MenuItem Header="🔵 Blue" Command="{Binding ChangeColorCommand}" CommandParameter="1" FontSize="11"/>
+                                    <MenuItem Header="🩷 Pink" Command="{Binding ChangeColorCommand}" CommandParameter="2" FontSize="11"/>
+                                    <MenuItem Header="🟢 Green" Command="{Binding ChangeColorCommand}" CommandParameter="3" FontSize="11"/>
+                                    <MenuItem Header="🟣 Purple" Command="{Binding ChangeColorCommand}" CommandParameter="4" FontSize="11"/>
+                                    <MenuItem Header="⚪ White" Command="{Binding ChangeColorCommand}" CommandParameter="5" FontSize="11"/>
+                                </MenuItem>
+                                <Separator/>
+                                
+                                <!-- Settings -->
+                                <MenuItem Header="⚙️ Settings..." Command="{Binding OpenSettingsCommand}" FontSize="11"/>
+                            </ContextMenu>
+                        </TextBox.ContextMenu>
+                    </TextBox>
+
+                    <!-- Resize Grip (Bottom-Right Corner) -->
+                    <Canvas Name="ResizeGrip"
+                            VerticalAlignment="Bottom" 
+                            HorizontalAlignment="Right"
+                            Width="20" Height="20"
+                            Margin="0,0,2,2"
+                            Background="Transparent"
+                            Cursor="BottomRightCorner">
+                        <!-- Six diagonal dots for resize grip indicator -->
+                        <Ellipse Width="2" Height="2" Fill="#999" Canvas.Left="14" Canvas.Top="14"/>
+                        <Ellipse Width="2" Height="2" Fill="#999" Canvas.Left="10" Canvas.Top="14"/>
+                        <Ellipse Width="2" Height="2" Fill="#999" Canvas.Left="14" Canvas.Top="10"/>
+                        <Ellipse Width="2" Height="2" Fill="#999" Canvas.Left="6" Canvas.Top="14"/>
+                        <Ellipse Width="2" Height="2" Fill="#999" Canvas.Left="10" Canvas.Top="10"/>
+                        <Ellipse Width="2" Height="2" Fill="#999" Canvas.Left="14" Canvas.Top="6"/>
+                    </Canvas>
+                </Grid>
+
+            </Border>
+
+        </Grid>
+    </Border>
+
+</Window>

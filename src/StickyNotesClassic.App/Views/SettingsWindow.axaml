@@ -1,0 +1,200 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:StickyNotesClassic.App.ViewModels"
+        mc:Ignorable="d" d:DesignWidth="500" d:DesignHeight="600"
+        x:Class="StickyNotesClassic.App.Views.SettingsWindow"
+        x:DataType="vm:SettingsViewModel"
+        Title="Settings"
+        Width="450" Height="550"
+        MinWidth="400" MinHeight="500"
+        WindowStartupLocation="CenterScreen"
+        CanResize="False">
+
+    <Window.Styles>
+        <StyleInclude Source="/Themes/ClassicTheme.axaml"/>
+    </Window.Styles>
+
+    <Grid RowDefinitions="*,Auto" Margin="16">
+
+        <!-- Settings Content -->
+        <ScrollViewer Grid.Row="0">
+            <StackPanel Spacing="16">
+
+                <!-- Font Settings Section -->
+                <Border BorderBrush="#DDDDDD" BorderThickness="1" 
+                        CornerRadius="4" Padding="12">
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="Font Settings" 
+                                   FontWeight="Bold" 
+                                   FontSize="12"/>
+
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="Font Family:" FontSize="11"/>
+                            <ComboBox SelectedItem="{Binding DefaultFontFamily}"
+                                      HorizontalAlignment="Stretch">
+                                <ComboBoxItem Content="Segoe Print"/>
+                                <ComboBoxItem Content="Segoe UI"/>
+                                <ComboBoxItem Content="Comic Sans MS"/>
+                                <ComboBoxItem Content="Arial"/>
+                                <ComboBoxItem Content="Courier New"/>
+                                <ComboBoxItem Content="Times New Roman"/>
+                                <ComboBoxItem Content="Calibri"/>
+                            </ComboBox>
+                        </StackPanel>
+
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="Font Size:" FontSize="11"/>
+                            <NumericUpDown Value="{Binding DefaultFontSize}"
+                                          Minimum="8" Maximum="72"
+                                          Increment="1"
+                                          FormatString="0"/>
+                        </StackPanel>
+
+                        <Button Content="Apply Font to All Existing Notes"
+                                Command="{Binding ApplyFontToAllNotesCommand}"
+                                HorizontalAlignment="Left"
+                                IsEnabled="False"
+                                ToolTip.Tip="Available when rich text is implemented"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Default Note Color Section -->
+                <Border BorderBrush="#DDDDDD" BorderThickness="1" 
+                        CornerRadius="4" Padding="12">
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="Default Note Color" 
+                                   FontWeight="Bold" 
+                                   FontSize="12"/>
+                        
+                        <TextBlock Text="Choose the default color for new notes:" 
+                                   FontSize="11" 
+                                   Foreground="#666666"/>
+                        
+                        <ComboBox SelectedIndex="{Binding DefaultNoteColorIndex}"
+                                  HorizontalAlignment="Stretch">
+                            <ComboBoxItem Content="🟡 Yellow"/>
+                            <ComboBoxItem Content="🔵 Blue"/>
+                            <ComboBoxItem Content="🩷 Pink"/>
+                            <ComboBoxItem Content="🟢 Green"/>
+                            <ComboBoxItem Content="🟣 Purple"/>
+                            <ComboBoxItem Content="⚪ White"/>
+                        </ComboBox>
+                    </StackPanel>
+                </Border>
+
+                <!-- Visual Effects Section -->
+                <Border BorderBrush="#DDDDDD" BorderThickness="1" 
+                        CornerRadius="4" Padding="12">
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="Visual Effects (Windows 7 Style)" 
+                                   FontWeight="Bold" 
+                                   FontSize="12"/>
+                        
+                        <CheckBox Content="Background gradient" 
+                                  IsChecked="{Binding EnableBackgroundGradient}"
+                                  FontSize="11"/>
+                        <CheckBox Content="Enhanced shadow" 
+                                  IsChecked="{Binding EnableEnhancedShadow}"
+                                  FontSize="11"/>
+                        <CheckBox Content="Glossy header" 
+                                  IsChecked="{Binding EnableGlossyHeader}"
+                                  FontSize="11"/>
+                        <CheckBox Content="Text shadow (dark colors)" 
+                                  IsChecked="{Binding EnableTextShadow}"
+                                  FontSize="11"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Hotkey Settings Section -->
+                <Border BorderBrush="#DDDDDD" BorderThickness="1" 
+                        CornerRadius="4" Padding="12">
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="Hotkey Settings" 
+                                   FontWeight="Bold" 
+                                   FontSize="12"/>
+
+                        <TextBlock Text="Global hotkey to create new note:" 
+                                   FontSize="11" 
+                                   Foreground="#666666"/>
+
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="Modifiers:" FontSize="11"/>
+                            <TextBox Text="{Binding HotkeyModifiers}"
+                                     Watermark="e.g., Control,Alt"
+                                     IsReadOnly="False"/>
+                        </StackPanel>
+
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="Key:" FontSize="11"/>
+                            <TextBox Text="{Binding HotkeyKey}"
+                                     Watermark="e.g., N"
+                                     MaxLength="1"/>
+                        </StackPanel>
+
+                        <TextBlock Text="ⓘ Windows only. macOS and Linux require elevated permissions."
+                                   FontSize="11"
+                                   Foreground="#888888"
+                                   TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Backup Settings Section -->
+                <Border BorderBrush="#DDDDDD" BorderThickness="1" 
+                        CornerRadius="4" Padding="12">
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="Backup Settings" 
+                                   FontWeight="Bold" 
+                                   FontSize="12"/>
+
+                        <CheckBox Content="Enable automatic daily backups"
+                                  IsChecked="{Binding AutoBackupEnabled}"/>
+
+                        <StackPanel Spacing="6" IsEnabled="{Binding AutoBackupEnabled}">
+                            <TextBlock Text="Retention (days):" FontSize="11"/>
+                            <NumericUpDown Value="{Binding AutoBackupRetentionDays}"
+                                          Minimum="1" Maximum="365"
+                                          Increment="1"
+                                          FormatString="0"/>
+                        </StackPanel>
+
+                        <Separator/>
+
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <Button Content="Export Notes..."
+                                    Command="{Binding ExportCommand}"
+                                    Width="140"/>
+                            <Button Content="Import Notes..."
+                                    Command="{Binding ImportCommand}"
+                                    Width="140"/>
+                        </StackPanel>
+
+                        <TextBlock Text="💾 Backups saved to: %LocalAppData%\Lou32StickyNotes\Backups"
+                                   FontSize="11"
+                                   Foreground="#888888"
+                                   TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Border>
+
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Action Buttons -->
+        <StackPanel Grid.Row="1" 
+                    Orientation="Horizontal" 
+                    HorizontalAlignment="Right" 
+                    Spacing="10" 
+                    Margin="0,16,0,0">
+            <Button Content="Save" 
+                    Command="{Binding SaveCommand}"
+                    Width="100"
+                    Classes="accent"/>
+            <Button Content="Cancel" 
+                    Command="{Binding CancelCommand}"
+                    Width="100"/>
+        </StackPanel>
+
+    </Grid>
+
+</Window>

@@ -1,0 +1,80 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Windows 7 Sticky Notes Classic Theme -->
+    <!-- Based on spec lines 196-256 -->
+
+    <Style>
+        <Style.Resources>
+            <!-- Typography Tokens -->
+            <FontFamily x:Key="NoteFontFamily">Segoe Print, Segoe UI, Comic Sans MS, sans-serif</FontFamily>
+            <x:Double x:Key="NoteFontSize">12</x:Double>
+            <x:Double x:Key="NoteLineHeight">1.25</x:Double>
+
+            <!-- Layout Metrics (DIP) -->
+            <x:Double x:Key="NoteMinWidth">140</x:Double>
+            <x:Double x:Key="NoteMinHeight">120</x:Double>
+            <x:Double x:Key="NoteDefaultWidth">220</x:Double>
+            <x:Double x:Key="NoteDefaultHeight">200</x:Double>
+            <x:Double x:Key="NoteCornerRadius">4</x:Double>
+            <x:Double x:Key="NoteBorderThickness">1</x:Double>
+
+            <!-- Header Metrics -->
+            <x:Double x:Key="HeaderHeight">24</x:Double>
+            <Thickness x:Key="HeaderPadding">8,4,6,4</Thickness>
+            <x:Double x:Key="IconSize">16</x:Double>
+            <x:Double x:Key="IconHitTarget">22</x:Double>
+            <x:Double x:Key="IconSpacing">4</x:Double>
+
+            <!-- Body Metrics -->
+            <Thickness x:Key="BodyPadding">10</Thickness>
+
+            <!-- Shadow (Radius, OffsetX, OffsetY, Opacity) -->
+            <x:Double x:Key="ShadowRadius">10</x:Double>
+            <x:Double x:Key="ShadowOffsetX">0</x:Double>
+            <x:Double x:Key="ShadowOffsetY">3</x:Double>
+            <x:Double x:Key="ShadowOpacity">0.25</x:Double>
+
+            <!-- ==================== COLOR PALETTES ==================== -->
+            <!-- Each theme has: Fill (base), FillHighlight (top gradient), Border -->
+
+            <!-- YELLOW Theme (Default) -->
+            <SolidColorBrush x:Key="YellowFill">#FEFF9C</SolidColorBrush>
+            <SolidColorBrush x:Key="YellowFillHighlight">#FFFCE0</SolidColorBrush>
+            <SolidColorBrush x:Key="YellowBorder">#D6D37A</SolidColorBrush>
+
+            <!-- BLUE Theme -->
+            <SolidColorBrush x:Key="BlueFill">#7AFCFF</SolidColorBrush>
+            <SolidColorBrush x:Key="BlueFillHighlight">#DFFBFF</SolidColorBrush>
+            <SolidColorBrush x:Key="BlueBorder">#6BC9CC</SolidColorBrush>
+
+            <!-- PINK Theme -->
+            <SolidColorBrush x:Key="PinkFill">#FF7EB9</SolidColorBrush>
+            <SolidColorBrush x:Key="PinkFillHighlight">#FFE0EF</SolidColorBrush>
+            <SolidColorBrush x:Key="PinkBorder">#D46A97</SolidColorBrush>
+
+            <!-- GREEN Theme -->
+            <SolidColorBrush x:Key="GreenFill">#B8FF9C</SolidColorBrush>
+            <SolidColorBrush x:Key="GreenFillHighlight">#E6FFE0</SolidColorBrush>
+            <SolidColorBrush x:Key="GreenBorder">#86C26F</SolidColorBrush>
+
+            <!-- PURPLE Theme -->
+            <SolidColorBrush x:Key="PurpleFill">#C5B3FF</SolidColorBrush>
+            <SolidColorBrush x:Key="PurpleFillHighlight">#EEE8FF</SolidColorBrush>
+            <SolidColorBrush x:Key="PurpleBorder">#9A88D6</SolidColorBrush>
+
+            <!-- WHITE Theme -->
+            <SolidColorBrush x:Key="WhiteFill">#FFFFFF</SolidColorBrush>
+            <SolidColorBrush x:Key="WhiteFillHighlight">#FFFFFF</SolidColorBrush>
+            <SolidColorBrush x:Key="WhiteBorder">#CFCFCF</SolidColorBrush>
+
+            <!-- Text Colors (semi-transparent black for readability) -->
+            <SolidColorBrush x:Key="NoteTextBrush">#333333</SolidColorBrush>
+            <SolidColorBrush x:Key="HeaderTextBrush">#666666</SolidColorBrush>
+            <SolidColorBrush x:Key="IconBrush">#555555</SolidColorBrush>
+            <SolidColorBrush x:Key="IconHoverBrush">#222222</SolidColorBrush>
+
+        </Style.Resources>
+    </Style>
+
+</Styles>
