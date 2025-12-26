@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Logging;
 using StickyNotesClassic.Core.Data;
 using StickyNotesClassic.Core.Models;
 using System.Globalization;
@@ -12,10 +13,12 @@ namespace StickyNotesClassic.Core.Repositories;
 public class NotesRepository : INotesRepository
 {
     private readonly NotesDbContext _dbContext;
+    private readonly ILogger<NotesRepository> _logger;
 
-    public NotesRepository(NotesDbContext dbContext)
+    public NotesRepository(NotesDbContext dbContext, ILogger<NotesRepository> logger)
     {
         _dbContext = dbContext;
+        _logger = logger;
     }
 
     public async Task<List<Note>> GetAllActiveNotesAsync()
@@ -133,29 +136,38 @@ public class NotesRepository : INotesRepository
             settingsDict[reader.GetString(0)] = reader.GetString(1);
         }
 
-        // Deserialize from key-value pairs
-        if (settingsDict.TryGetValue("DefaultFontFamily", out var fontFamily))
-            settings.DefaultFontFamily = fontFamily;
-        if (settingsDict.TryGetValue("DefaultFontSize", out var fontSize))
-            settings.DefaultFontSize = double.Parse(fontSize, CultureInfo.InvariantCulture);
-        if (settingsDict.TryGetValue("DefaultNoteColor", out var noteColor))
-            settings.DefaultNoteColor = (NoteColor)int.Parse(noteColor);
-        if (settingsDict.TryGetValue("EnableBackgroundGradient", out var bgGradient))
-            settings.EnableBackgroundGradient = bool.Parse(bgGradient);
-        if (settingsDict.TryGetValue("EnableEnhancedShadow", out var enhancedShadow))
-            settings.EnableEnhancedShadow = bool.Parse(enhancedShadow);
-        if (settingsDict.TryGetValue("EnableGlossyHeader", out var glossyHeader))
-            settings.EnableGlossyHeader = bool.Parse(glossyHeader);
-        if (settingsDict.TryGetValue("EnableTextShadow", out var textShadow))
-            settings.EnableTextShadow = bool.Parse(textShadow);
-        if (settingsDict.TryGetValue("HotkeyModifiers", out var modifiers))
-            settings.HotkeyModifiers = modifiers;
-        if (settingsDict.TryGetValue("HotkeyKey", out var key))
-            settings.HotkeyKey = key;
-        if (settingsDict.TryGetValue("AutoBackupEnabled", out var backupEnabled))
-            settings.AutoBackupEnabled = bool.Parse(backupEnabled);
-        if (settingsDict.TryGetValue("AutoBackupRetentionDays", out var retentionDays))
-            settings.AutoBackupRetentionDays = int.Parse(retentionDays);
+        // Deserialize from key-value pairs with error handling
+        try
+        {
+            if (settingsDict.TryGetValue("DefaultFontFamily", out var fontFamily))
+                settings.DefaultFontFamily = fontFamily;
+            if (settingsDict.TryGetValue("DefaultFontSize", out var fontSize))
+                settings.DefaultFontSize = double.TryParse(fontSize, CultureInfo.InvariantCulture, out var size) 
+                    ? size : settings.DefaultFontSize;
+            if (settingsDict.TryGetValue("DefaultNoteColor", out var noteColor))
+                settings.DefaultNoteColor = int.TryParse(noteColor, out var color) 
+                    ? (NoteColor)color : settings.DefaultNoteColor;
+            if (settingsDict.TryGetValue("EnableBackgroundGradient", out var bgGradient))
+                settings.EnableBackgroundGradient = bool.TryParse(bgGradient, out var bg) ? bg : settings.EnableBackgroundGradient;
+            if (settingsDict.TryGetValue("EnableEnhancedShadow", out var enhancedShadow))
+                settings.EnableEnhancedShadow = bool.TryParse(enhancedShadow, out var shadow) ? shadow : settings.EnableEnhancedShadow;
+            if (settingsDict.TryGetValue("EnableGlossyHeader", out var glossyHeader))
+                settings.EnableGlossyHeader = bool.TryParse(glossyHeader, out var glossy) ? glossy : settings.EnableGlossyHeader;
+            if (settingsDict.TryGetValue("EnableTextShadow", out var textShadow))
+                settings.EnableTextShadow = bool.TryParse(textShadow, out var ts) ? ts : settings.EnableTextShadow;
+            if (settingsDict.TryGetValue("HotkeyModifiers", out var modifiers))
+                settings.HotkeyModifiers = modifiers;
+            if (settingsDict.TryGetValue("HotkeyKey", out var key))
+                settings.HotkeyKey = key;
+            if (settingsDict.TryGetValue("AutoBackupEnabled", out var backupEnabled))
+                settings.AutoBackupEnabled = bool.TryParse(backupEnabled, out var enabled) ? enabled : settings.AutoBackupEnabled;
+            if (settingsDict.TryGetValue("AutoBackupRetentionDays", out var retentionDays))
+                settings.AutoBackupRetentionDays = int.TryParse(retentionDays, out var days) ? days : settings.AutoBackupRetentionDays;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error parsing settings, using defaults");
+        }
 
         return settings;
     }
@@ -198,8 +210,9 @@ public class NotesRepository : INotesRepository
 
             transaction.Commit();
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.LogError(ex, "Failed to save settings");
             transaction.Rollback();
             throw;
         }

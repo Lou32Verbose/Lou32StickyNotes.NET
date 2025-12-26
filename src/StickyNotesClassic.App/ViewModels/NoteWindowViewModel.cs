@@ -2,10 +2,14 @@ using System;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
+using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
+using Microsoft.Extensions.Logging;
 using StickyNotesClassic.Core.Models;
 using StickyNotesClassic.Core.Services;
 using StickyNotesClassic.Core.Repositories;
 using StickyNotesClassic.App.Services;
+using StickyNotesClassic.App.Messages;
 
 namespace StickyNotesClassic.App.ViewModels;
 
@@ -17,6 +21,7 @@ public class NoteWindowViewModel : INotifyPropertyChanged, IDisposable
     private readonly AutosaveService _autosaveService;
     private readonly ThemeService _themeService;
     private readonly INotesRepository _repository;
+    private readonly ILogger<NoteWindowViewModel> _logger;
     private Note _note;
     private string _contentRtf;
     private string _contentText;
@@ -29,12 +34,13 @@ public class NoteWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    public NoteWindowViewModel(Note note, AutosaveService autosaveService, ThemeService themeService, INotesRepository repository)
+    public NoteWindowViewModel(Note note, AutosaveService autosaveService, ThemeService themeService, INotesRepository repository, ILogger<NoteWindowViewModel> logger)
     {
         _note = note;
         _autosaveService = autosaveService;
         _themeService = themeService;
         _repository = repository;
+        _logger = logger;
         _contentRtf = note.ContentRtf;
         _contentText = note.ContentText;
 
@@ -48,8 +54,8 @@ public class NoteWindowViewModel : INotifyPropertyChanged, IDisposable
         // Load font settings asynchronously
         LoadFontSettingsAsync();
         
-        // Subscribe to settings changes
-        App.SettingsChanged += OnSettingsChanged;
+        // Subscribe to settings changes via messaging
+        WeakReferenceMessenger.Default.Register<SettingsChangedMessage>(this, (r, m) => OnSettingsChangedMessage());
     }
 
     private void OnSettingsChanged(object? sender, EventArgs e)
@@ -60,21 +66,37 @@ public class NoteWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private async void LoadFontSettingsAsync()
     {
-        var settings = await _repository.GetSettingsAsync();
-        FontFamily = settings.DefaultFontFamily;
-        FontSize = settings.DefaultFontSize;
+        try
+        {
+            var settings = await _repository.GetSettingsAsync();
+            FontFamily = settings.DefaultFontFamily;
+            FontSize = settings.DefaultFontSize;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to load font settings for note {NoteId}", _note.Id);
+        }
+    }
+
+    private async void OnSettingsChangedMessage()
+    {
+        _logger.LogDebug("Received settings changed message for note {NoteId}", _note.Id);
         
-        // Load visual effects settings
-        Console.WriteLine($"[NoteWindowViewModel] Loading visual effects for note {_note.Id}:");
-        Console.WriteLine($"  EnableBackgroundGradient: {settings.EnableBackgroundGradient}");
-        Console.WriteLine($"  EnableEnhancedShadow: {settings.EnableEnhancedShadow}");
-        Console.WriteLine($"  EnableGlossyHeader: {settings.EnableGlossyHeader}");
-        Console.WriteLine($"  EnableTextShadow: {settings.EnableTextShadow}");
-        
-        EnableBackgroundGradient = settings.EnableBackgroundGradient;
-        EnableEnhancedShadow = settings.EnableEnhancedShadow;
-        EnableGlossyHeader = settings.EnableGlossyHeader;
-        EnableTextShadow = settings.EnableTextShadow;
+        try
+        {
+            var settings = await _repository.GetSettingsAsync();
+            FontFamily = settings.DefaultFontFamily;
+            FontSize = settings.DefaultFontSize;
+            
+            EnableBackgroundGradient = settings.EnableBackgroundGradient;
+            EnableEnhancedShadow = settings.EnableEnhancedShadow;
+            EnableGlossyHeader = settings.EnableGlossyHeader;
+            EnableTextShadow = settings.EnableTextShadow;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to apply settings changes for note {NoteId}", _note.Id);
+        }
     }
 
     public Note Note => _note;
@@ -117,6 +139,14 @@ public class NoteWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             if (_contentRtf != value)
             {
+                // Validate RTF content before accepting
+                var validation = ValidationService.ValidateRtfContent(value);
+                if (!validation.IsValid)
+                {
+                    _logger.LogWarning("Invalid RTF content rejected for note {NoteId}: {Error}", _note.Id, validation.ErrorMessage);
+                    return;
+                }
+                
                 _contentRtf = value;
                 OnPropertyChanged();
                 // Debounced save
@@ -291,59 +321,7 @@ public class NoteWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public void Dispose()
     {
-        // Unsubscribe from settings changes to prevent memory leaks
-        App.SettingsChanged -= OnSettingsChanged;
+        // Unregister from messaging (automatic with weak references, but explicit is clearer)
+        WeakReferenceMessenger.Default.Unregister<SettingsChangedMessage>(this);
     }
-}
-
-/// <summary>
-/// Simple relay command implementation.
-/// </summary>
-public class RelayCommand : ICommand
-{
-    private readonly Action _execute;
-    private readonly Func<bool>? _canExecute;
-
-    public event EventHandler? CanExecuteChanged;
-
-    public RelayCommand(Action execute, Func<bool>? canExecute = null)
-    {
-        _execute = execute ?? throw new ArgumentNullException(nameof(execute));
-        _canExecute = canExecute;
-    }
-
-    public bool CanExecute(object? parameter) => _canExecute?.Invoke() ?? true;
-
-    public void Execute(object? parameter) => _execute();
-
-    public void RaiseCanExecuteChanged() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
-}
-
-/// <summary>
-/// Generic relay command implementation.
-/// </summary>
-public class RelayCommand<T> : ICommand
-{
-    private readonly Action<T?> _execute;
-    private readonly Func<T?, bool>? _canExecute;
-
-    public event EventHandler? CanExecuteChanged;
-
-    public RelayCommand(Action<T?> execute, Func<T?, bool>? canExecute = null)
-    {
-        _execute = execute ?? throw new ArgumentNullException(nameof(execute));
-        _canExecute = canExecute;
-    }
-
-    public bool CanExecute(object? parameter)
-    {
-        return _canExecute?.Invoke((T?)parameter) ?? true;
-    }
-
-    public void Execute(object? parameter)
-    {
-        _execute((T?)parameter);
-    }
-
-    public void RaiseCanExecuteChanged() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
 }

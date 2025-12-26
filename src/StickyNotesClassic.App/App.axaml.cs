@@ -2,6 +2,8 @@ using System;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using StickyNotesClassic.Core.Data;
 using StickyNotesClassic.Core.Models;
 using StickyNotesClassic.Core.Repositories;
@@ -17,17 +19,14 @@ namespace StickyNotesClassic.App;
 
 public partial class App : Application
 {
-    private NotesDbContext? _dbContext;
-    private INotesRepository? _repository;
-    private AutosaveService? _autosaveService;
-    private ThemeService? _themeService;
-    private BackupService? _backupService;
+    private IServiceProvider? _services;
+    private ILogger<App>? _logger;
     private readonly List<NoteWindow> _openWindows = new();
 
     /// <summary>
     /// Gets the BackupService instance for use by SettingsWindow.
     /// </summary>
-    public BackupService? BackupService => _backupService;
+    public BackupService? BackupService => _services?.GetService<BackupService>();
 
     /// <summary>
     /// Event raised when application settings are saved.
@@ -49,49 +48,54 @@ public partial class App : Application
 
     public override void OnFrameworkInitializationCompleted()
     {
-        Console.WriteLine("=== App OnFrameworkInitializationCompleted called ===");
-        
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            Console.WriteLine("Initializing services...");
+            // Build dependency injection container
+            var services = new ServiceCollection();
+            services.ConfigureServices();
+            _services = services.BuildServiceProvider();
             
-            // Initialize services
-            _dbContext = new NotesDbContext();
-            _repository = new NotesRepository(_dbContext);
-            _autosaveService = new AutosaveService(_repository);
-            _themeService = new ThemeService();
-            _backupService = new BackupService(_repository);
+            // Get logger after DI container is built
+            _logger = _services.GetRequiredService<ILogger<App>>();
+            _logger.LogInformation("Application framework initialization completed");
+            _logger.LogInformation("Services initialized with dependency injection container");
 
-            Console.WriteLine("Services initialized. Starting database initialization...");
+            // Set up global exception handlers
+            AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
+            TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
+            _logger.LogInformation("Global exception handlers registered");
 
             // Initialize database
             Task.Run(async () =>
             {
                 try
                 {
-                    Console.WriteLine("Initializing database...");
-                    await _dbContext.InitializeAsync();
-                    Console.WriteLine("Database initialized.");
+                    var dbContext = _services!.GetRequiredService<NotesDbContext>();
+                    var repository = _services.GetRequiredService<INotesRepository>();
+                    var backupService = _services.GetService<BackupService>();
+                    
+                    _logger!.LogInformation("Initializing database");
+                    await dbContext.InitializeAsync();
+                    _logger.LogInformation("Database initialized successfully");
                     
                     // Load settings and schedule auto-backup
-                    Console.WriteLine("Loading settings...");
-                    var settings = await _repository.GetSettingsAsync();
-                    Console.WriteLine($"Settings loaded. AutoBackup: {settings.AutoBackupEnabled}");
+                    _logger.LogInformation("Loading application settings");
+                    var settings = await repository.GetSettingsAsync();
+                    _logger.LogInformation("Settings loaded. AutoBackup: {AutoBackupEnabled}", settings.AutoBackupEnabled);
                     
-                    if (settings.AutoBackupEnabled && _backupService != null)
+                    if (settings.AutoBackupEnabled && backupService != null)
                     {
-                        _backupService.ScheduleDailyBackup(settings.AutoBackupRetentionDays);
-                        Console.WriteLine("Auto-backup scheduled.");
+                        backupService.ScheduleDailyBackup(settings.AutoBackupRetentionDays);
+                        _logger.LogInformation("Auto-backup scheduled for {RetentionDays} days retention", settings.AutoBackupRetentionDays);
                     }
                     
-                    Console.WriteLine("Loading and showing notes...");
+                    _logger.LogInformation("Loading and showing notes");
                     await LoadAndShowNotesAsync();
-                    Console.WriteLine("Notes loaded and windows created.");
+                    _logger.LogInformation("Notes loaded and windows created successfully");
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"ERROR during initialization: {ex.Message}");
-                    Console.WriteLine($"Stack trace: {ex.StackTrace}");
+                    _logger!.LogError(ex, "Fatal error during application initialization");
                 }
             });
 
@@ -103,7 +107,8 @@ public partial class App : Application
         }
         else
         {
-            Console.WriteLine("Not a desktop application lifetime!");
+            // This shouldn't happen for desktop app, but log it if it does
+            System.Diagnostics.Debug.WriteLine("Warning: Not a desktop application lifetime!");
         }
 
         base.OnFrameworkInitializationCompleted();
@@ -111,81 +116,96 @@ public partial class App : Application
 
     private async void OnAppSettingsChanged(object? sender, EventArgs e)
     {
-        Console.WriteLine("=== OnAppSettingsChanged triggered ===");
-        
-        if (_repository == null)
+        try
         {
-            Console.WriteLine("Repository is null, returning");
-            return;
-        }
+            _logger?.LogInformation("Settings changed event triggered");
             
-        // Get the new default color
-        var settings = await _repository.GetSettingsAsync();
-        var newDefaultColor = settings.DefaultNoteColor;
-        
-        Console.WriteLine($"New default color: {newDefaultColor}");
-        Console.WriteLine($"Number of open windows: {_openWindows.Count}");
-        
-        // Update all open note windows to use the new color
-        await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
-        {
-            foreach (var window in _openWindows)
+            var repository = _services?.GetService<INotesRepository>();
+            if (repository == null)
             {
-                if (window.DataContext is NoteWindowViewModel vm)
-                {
-                    Console.WriteLine($"Updating note {vm.NoteId} from {vm.Color} to {newDefaultColor}");
-                    vm.Color = newDefaultColor;
-                }
+                _logger?.LogWarning("Repository not available, cannot apply settings changes");
+                return;
             }
-        });
+                
+            // Get the new default color
+            var settings = await repository.GetSettingsAsync();
+            var newDefaultColor = settings.DefaultNoteColor;
+            
+            _logger?.LogInformation("Applying new default color {Color} to {Count} open windows", 
+                newDefaultColor, _openWindows.Count);
         
-        Console.WriteLine("=== Color update complete ===");
+            // Update all open note windows to use the new color
+            await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                foreach (var window in _openWindows)
+                {
+                    if (window.DataContext is NoteWindowViewModel vm)
+                    {
+                        _logger?.LogDebug("Updating note {NoteId} color from {OldColor} to {NewColor}", 
+                            vm.NoteId, vm.Color, newDefaultColor);
+                        vm.Color = newDefaultColor;
+                    }
+                }
+            });
+            
+            _logger?.LogInformation("Color update complete for all windows");
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to apply settings changes");
+        }
     }
 
     private async Task LoadAndShowNotesAsync()
     {
-        Console.WriteLine("LoadAndShowNotesAsync called");
+        var repository = _services?.GetRequiredService<INotesRepository>();
+        var autosaveService = _services?.GetRequiredService<AutosaveService>();
+        var themeService = _services?.GetRequiredService<ThemeService>();
         
-        if (_repository == null || _autosaveService == null || _themeService == null)
+        if (repository == null || autosaveService == null || themeService == null)
         {
-            Console.WriteLine("ERROR: Services are null!");
+            _logger?.LogError("Required services are null, cannot load notes");
             return;
         }
 
-        Console.WriteLine("Fetching all active notes from database...");
-        var notes = await _repository.GetAllActiveNotesAsync();
-        Console.WriteLine($"Found {notes.Count} active notes.");
+        _logger?.LogInformation("Fetching all active notes from database");
+        var notes = await repository.GetAllActiveNotesAsync();
+        _logger?.LogInformation("Found {Count} active notes", notes.Count);
 
         // If no notes exist, create a default yellow note
         if (notes.Count == 0)
         {
-            Console.WriteLine("No notes found. Creating default note...");
-            var settings = await _repository.GetSettingsAsync();
+            _logger?.LogInformation("No notes found, creating default note");
+            var settings = await repository.GetSettingsAsync();
             var defaultNote = Note.CreateNew(settings.DefaultNoteColor);
-            await _repository.UpsertNoteAsync(defaultNote);
+            await repository.UpsertNoteAsync(defaultNote);
             notes.Add(defaultNote);
-            Console.WriteLine("Default note created.");
+            _logger?.LogInformation("Default note created with color {Color}", settings.DefaultNoteColor);
         }
 
         // Create a window for each note on UI thread
-        Console.WriteLine("Creating windows on UI thread...");
+        _logger?.LogInformation("Creating windows on UI thread");
         await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
         {
             foreach (var note in notes)
             {
-                Console.WriteLine($"Creating window for note {note.Id}...");
-                CreateNoteWindow(note);
+                _logger?.LogDebug("Creating window for note {NoteId}", note.Id);
+                CreateNoteWindow(note, autosaveService, themeService, repository);
             }
-            Console.WriteLine("All windows created.");
+            _logger?.LogInformation("All windows created successfully");
         });
     }
 
-    private void CreateNoteWindow(Note note)
+    private void CreateNoteWindow(Note note, AutosaveService autosaveService, ThemeService themeService, INotesRepository repository)
     {
-        if (_autosaveService == null || _themeService == null || _repository == null)
+        var logger = _services?.GetRequiredService<ILogger<NoteWindowViewModel>>();
+        if (logger == null)
+        {
+            _logger?.LogError("Failed to resolve ILogger<NoteWindowViewModel>");
             return;
+        }
 
-        var viewModel = new NoteWindowViewModel(note, _autosaveService, _themeService, _repository);
+        var viewModel = new NoteWindowViewModel(note, autosaveService, themeService, repository, logger);
         var window = new NoteWindow
         {
             DataContext = viewModel,
@@ -232,9 +252,15 @@ public partial class App : Application
     /// </summary>
     public async Task OpenSettingsWindowAsync()
     {
-        if (_repository == null) return;
+        var repository = _services?.GetService<INotesRepository>();
+        if (repository == null)
+        {
+            _logger?.LogWarning("Repository not available, cannot open settings");
+            return;
+        }
 
-        var settingsVm = new SettingsViewModel(_repository);
+        var logger = _services.GetRequiredService<ILogger<SettingsViewModel>>();
+        var settingsVm = new SettingsViewModel(repository, logger);
         var settingsWindow = new SettingsWindow
         {
             DataContext = settingsVm
@@ -258,10 +284,17 @@ public partial class App : Application
     /// </summary>
     public async Task ReloadNotesAsync()
     {
-        if (_repository == null || _autosaveService == null || _themeService == null)
+        var repository = _services?.GetService<INotesRepository>();
+        var autosaveService = _services?.GetService<AutosaveService>();
+        var themeService = _services?.GetService<ThemeService>();
+        
+        if (repository == null || autosaveService == null || themeService == null)
+        {
+            _logger?.LogWarning("Services not available for note reload");
             return;
+        }
 
-        var allNotes = await _repository.GetAllActiveNotesAsync();
+        var allNotes = await repository.GetAllActiveNotesAsync();
         var existingNoteIds = _openWindows.Select(w => (w.DataContext as NoteWindowViewModel)?.NoteId).ToHashSet();
 
         // Create windows for notes that don't have windows yet
@@ -271,23 +304,33 @@ public partial class App : Application
             {
                 if (!existingNoteIds.Contains(note.Id))
                 {
-                    CreateNoteWindow(note);
+                    CreateNoteWindow(note, autosaveService, themeService, repository);
                 }
             }
         });
+        
+        _logger?.LogInformation("Notes reloaded, {Count} new windows created", 
+            allNotes.Count - existingNoteIds.Count);
     }
 
     private void OnCreateNewNote()
     {
-        if (_repository == null)
+        var repository = _services?.GetService<INotesRepository>();
+        var autosaveService = _services?.GetService<AutosaveService>();
+        var themeService = _services?.GetService<ThemeService>();
+        
+        if (repository == null || autosaveService == null || themeService == null)
+        {
+            _logger?.LogWarning("Services not available for creating new note");
             return;
+        }
 
         // Create new note with slight offset from last created note
         var lastNote = _openWindows.LastOrDefault();
         
         Task.Run(async () =>
         {
-            var settings = await _repository.GetSettingsAsync();
+            var settings = await repository.GetSettingsAsync();
             var newNote = Note.CreateNew(settings.DefaultNoteColor);
             
             if (lastNote != null)
@@ -297,23 +340,31 @@ public partial class App : Application
                 newNote.Y = lastNote.Position.Y + 30;
             }
 
-            await _repository.UpsertNoteAsync(newNote);
+            await repository.UpsertNoteAsync(newNote);
+            
+            _logger?.LogInformation("Created new note {NoteId}", newNote.Id);
+            
             await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
             {
-                CreateNoteWindow(newNote);
+                CreateNoteWindow(newNote, autosaveService, themeService, repository);
             });
         });
     }
 
     private void OnCloseNoteWindow(NoteWindow window, Note note)
     {
-        if (_repository == null)
+        var repository = _services?.GetService<INotesRepository>();
+        if (repository == null)
+        {
+            _logger?.LogWarning("Repository not available, cannot soft delete note");
             return;
+        }
 
         // Soft delete the note
         Task.Run(async () =>
         {
-            await _repository.SoftDeleteNoteAsync(note.Id);
+            await repository.SoftDeleteNoteAsync(note.Id);
+            _logger?.LogInformation("Note {NoteId} soft deleted", note.Id);
         });
 
         window.Close();
@@ -328,10 +379,14 @@ public partial class App : Application
         }
         
         _openWindows.Remove(window);
+        
+        _logger?.LogInformation("{Count} windows remaining", _openWindows.Count);
 
         // If all windows are closed, exit the application
         if (_openWindows.Count == 0)
         {
+            _logger?.LogInformation("All windows closed, shutting down application");
+            
             if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
             {
                 desktop.Shutdown();
@@ -341,15 +396,54 @@ public partial class App : Application
 
     private void OnShutdownRequested(object? sender, ShutdownRequestedEventArgs e)
     {
+        _logger?.LogInformation("Shutdown requested, flushing pending saves");
+        
         // Flush all pending saves
-        if (_autosaveService != null)
+        var autosaveService = _services?.GetService<AutosaveService>();
+        if (autosaveService != null)
         {
-            Task.Run(async () => await _autosaveService.FlushAllAsync()).Wait();
+            Task.Run(async () => await autosaveService.FlushAllAsync()).Wait();
+            _logger?.LogInformation("All pending saves flushed");
         }
 
-        // Dispose services
-        _autosaveService?.Dispose();
-        _backupService?.Dispose();
-        _dbContext?.Dispose();
+        // Dispose services (DI container will handle disposal)
+        autosaveService?.Dispose();
+        _services?.GetService<BackupService>()?.Dispose();
+        _services?.GetService<NotesDbContext>()?.Dispose();
+        
+        
+        if (_services is IDisposable disposableProvider)
+        {
+            disposableProvider.Dispose();
+        }
+        
+        _logger?.LogInformation("Application shutdown complete");
+        Serilog.Log.CloseAndFlush();
+    }
+
+    private void OnUnhandledException(object sender, UnhandledExceptionEventArgs e)
+    {
+        var exception = e.ExceptionObject as Exception;
+        _logger?.LogCritical(exception, "Unhandled exception occurred. IsTerminating: {IsTerminating}", 
+            e.IsTerminating);
+        
+        // Try to show user-friendly error dialog if possible
+        try
+        {
+            if (!e.IsTerminating)
+            {
+                _logger?.LogInformation("Attempting to continue after non-fatal unhandled exception");
+            }
+        }
+        catch
+        {
+            // If we can't even log, just fail silently
+        }
+    }
+
+    private void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
+    {
+        _logger?.LogError(e.Exception, "Unobserved task exception");
+        e.SetObserved(); // Prevent app crash
     }
 }

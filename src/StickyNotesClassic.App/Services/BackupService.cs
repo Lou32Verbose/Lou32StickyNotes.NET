@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using StickyNotesClassic.Core.Models;
 using StickyNotesClassic.Core.Repositories;
 using System;
@@ -16,13 +17,15 @@ namespace StickyNotesClassic.App.Services;
 public class BackupService : IDisposable
 {
     private readonly INotesRepository _repository;
+    private readonly ILogger<BackupService> _logger;
     private readonly string _backupDirectory;
     private Timer? _dailyBackupTimer;
     private int _retentionDays = 7;
 
-    public BackupService(INotesRepository repository)
+    public BackupService(INotesRepository repository, ILogger<BackupService> logger)
     {
         _repository = repository;
+        _logger = logger;
         
         // Default backup location: %LocalAppData%/Lou32StickyNotes/Backups
         _backupDirectory = Path.Combine(
@@ -144,7 +147,7 @@ public class BackupService : IDisposable
         catch (Exception ex)
         {
             // Log error but don't crash the app
-            Console.WriteLine($"Auto-backup failed: {ex.Message}");
+            _logger.LogError(ex, "Auto-backup failed");
         }
     }
 
@@ -169,7 +172,7 @@ public class BackupService : IDisposable
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Backup cleanup failed: {ex.Message}");
+            _logger.LogError(ex, "Backup cleanup failed");
         }
     }
 

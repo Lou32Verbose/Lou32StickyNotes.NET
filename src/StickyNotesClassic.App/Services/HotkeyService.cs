@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using Microsoft.Extensions.Logging;
 
 namespace StickyNotesClassic.App.Services;
 
@@ -11,10 +12,16 @@ namespace StickyNotesClassic.App.Services;
 public class HotkeyService : IDisposable
 {
     private const int HOTKEY_ID = 9000;
+    private readonly ILogger<HotkeyService> _logger;
     private IntPtr _windowHandle;
     private bool _isRegistered;
 
     public event EventHandler? HotkeyPressed;
+
+    public HotkeyService(ILogger<HotkeyService> logger)
+    {
+        _logger = logger;
+    }
 
     /// <summary>
     /// Registers a global hotkey.
@@ -58,7 +65,7 @@ public class HotkeyService : IDisposable
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Failed to register hotkey: {ex.Message}");
+            _logger.LogError(ex, "Failed to register hotkey");
             return false;
         }
     }

@@ -2,8 +2,12 @@ using System;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
+using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
+using Microsoft.Extensions.Logging;
 using StickyNotesClassic.Core.Models;
 using StickyNotesClassic.Core.Repositories;
+using StickyNotesClassic.App.Messages;
 
 namespace StickyNotesClassic.App.ViewModels;
 
@@ -13,6 +17,7 @@ namespace StickyNotesClassic.App.ViewModels;
 public class SettingsViewModel : INotifyPropertyChanged
 {
     private readonly INotesRepository _repository;
+    private readonly ILogger<SettingsViewModel> _logger;
     private AppSettings _settings;
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -20,9 +25,10 @@ public class SettingsViewModel : INotifyPropertyChanged
     public event EventHandler<string>? RequestExport;
     public event EventHandler<string>? RequestImport;
 
-    public SettingsViewModel(INotesRepository repository)
+    public SettingsViewModel(INotesRepository repository, ILogger<SettingsViewModel> logger)
     {
         _repository = repository;
+        _logger = logger;
         _settings = new AppSettings(); // Will be loaded async
 
         SaveCommand = new RelayCommand(OnSave, CanSave);
@@ -150,18 +156,14 @@ public class SettingsViewModel : INotifyPropertyChanged
         get => (int)_settings.DefaultNoteColor;
         set
         {
-            Console.WriteLine($"DefaultNoteColorIndex setter called with value: {value}");
+            _logger.LogDebug("DefaultNoteColorIndex setter called with value: {Value}", value);
             var colorValue = (NoteColor)value;
             if (_settings.DefaultNoteColor != colorValue)
             {
-                Console.WriteLine($"Setting DefaultNoteColor from {_settings.DefaultNoteColor} to {colorValue}");
+                _logger.LogDebug("Setting DefaultNoteColor from {OldColor} to {NewColor}", _settings.DefaultNoteColor, colorValue);
                 _settings.DefaultNoteColor = colorValue;
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(DefaultNoteColor));
-            }
-            else
-            {
-                Console.WriteLine($"Color unchanged, still {_settings.DefaultNoteColor}");
             }
         }
     }
@@ -233,17 +235,17 @@ public class SettingsViewModel : INotifyPropertyChanged
 
     private async void OnSave()
     {
-        Console.WriteLine($"OnSave called, saving DefaultNoteColor: {_settings.DefaultNoteColor}");
+        _logger.LogInformation("Saving settings, DefaultNoteColor: {Color}", _settings.DefaultNoteColor);
         
         // Save settings to database
         await _repository.SaveSettingsAsync(_settings);
         
-        Console.WriteLine("Settings saved to database");
+        _logger.LogInformation("Settings saved to database successfully");
         
-        // Raise event AFTER save completes so handlers read updated values
-        App.RaiseSettingsChanged();
+        // Send message instead of static event
+        WeakReferenceMessenger.Default.Send(new SettingsChangedMessage());
         
-        Console.WriteLine("SettingsChanged event raised");
+        _logger.LogDebug("SettingsChanged message sent");
         
         RequestClose?.Invoke(this, EventArgs.Empty);
     }
@@ -280,7 +282,7 @@ public class SettingsViewModel : INotifyPropertyChanged
         // Re-evaluate CanSave when relevant properties change
         if (propertyName == nameof(HotkeyKey) || propertyName == nameof(HotkeyModifiers))
         {
-            (SaveCommand as RelayCommand)?.RaiseCanExecuteChanged();
+            (SaveCommand as RelayCommand)?.NotifyCanExecuteChanged();
         }
     }
 }

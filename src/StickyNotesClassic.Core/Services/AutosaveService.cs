@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using StickyNotesClassic.Core.Models;
 using StickyNotesClassic.Core.Repositories;
 using System.Collections.Concurrent;
@@ -14,6 +15,7 @@ public class AutosaveService : IDisposable
     private const int BoundsThrottleMs = 200;
 
     private readonly INotesRepository _repository;
+    private readonly ILogger<AutosaveService> _logger;
     private readonly ConcurrentDictionary<string, Timer> _contentTimers = new();
     private readonly ConcurrentDictionary<string, Timer> _boundsTimers = new();
     private readonly ConcurrentQueue<Func<Task>> _saveQueue = new();
@@ -21,10 +23,12 @@ public class AutosaveService : IDisposable
     private readonly CancellationTokenSource _cancellationTokenSource = new();
     private readonly Task _processingTask;
 
-    public AutosaveService(INotesRepository repository)
+    public AutosaveService(INotesRepository repository, ILogger<AutosaveService> logger)
     {
         _repository = repository;
+        _logger = logger;
         _processingTask = Task.Run(ProcessSaveQueueAsync);
+        _logger.LogInformation("AutosaveService initialized");
     }
 
     /// <summary>
@@ -155,7 +159,7 @@ public class AutosaveService : IDisposable
                     catch (Exception ex)
                     {
                         // Log error but continue processing queue
-                        Console.WriteLine($"Autosave error: {ex.Message}");
+                        _logger.LogError(ex, "Autosave operation failed");
                     }
                 }
             }

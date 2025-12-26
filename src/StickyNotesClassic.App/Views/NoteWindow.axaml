@@ -19,6 +19,18 @@
     <Window.Styles>
         <StyleInclude Source="/Themes/ClassicTheme.axaml"/>
         
+        <!-- Override Fluent theme resources for MenuItem text colors -->
+        <Style>
+            <Style.Resources>
+                <!-- Keyboard shortcut text - always black -->
+                <SolidColorBrush x:Key="MenuFlyoutItemKeyboardAcceleratorTextForeground">Black</SolidColorBrush>
+                <!-- Keyboard shortcut text on hover - keep black -->
+                <SolidColorBrush x:Key="MenuFlyoutItemKeyboardAcceleratorTextForegroundPointerOver">Black</SolidColorBrush>
+                <!-- Menu item foreground on hover - keep black -->
+                <SolidColorBrush x:Key="MenuFlyoutItemForegroundPointerOver">Black</SolidColorBrush>
+            </Style.Resources>
+        </Style>
+        
         <!-- Override TextBox styles to remove hover/focus effects and borders -->
         <Style Selector="TextBox">
             <Setter Property="BorderThickness" Value="0"/>
@@ -71,18 +83,24 @@
             </Setter>
         </Style>
         
-        <!-- Context Menu Text Color -->
+        <!-- Context Menu - All text should be black, no hover effects -->
         <Style Selector="MenuItem">
-            <Setter Property="Foreground" Value="#000000"/>
+            <Setter Property="Foreground" Value="Black"/>
         </Style>
-        <Style Selector="MenuItem:pointerover">
-            <Setter Property="Foreground" Value="#000000"/>
+        
+        <!-- Force header text to be black -->
+        <Style Selector="MenuItem /template/ ContentPresenter#PART_HeaderPresenter">
+            <Setter Property="TextElement.Foreground" Value="Black"/>
         </Style>
-        <Style Selector="MenuItem:pointerover /template/ ContentPresenter#PART_HeaderPresenter">
-            <Setter Property="Foreground" Value="#000000"/>
+        
+        <!-- Force InputGesture (keyboard shortcuts) to be black - multiple approaches for compatibility -->
+        <Style Selector="MenuItem /template/ TextBlock#PART_InputGestureText">
+            <Setter Property="Foreground" Value="Black"/>
+            <Setter Property="Opacity" Value="1"/>
         </Style>
-        <Style Selector="MenuItem:pointerover /template/ TextBlock#PART_InputGestureText">
-            <Setter Property="Foreground" Value="#666666"/>
+        
+        <Style Selector="MenuItem TextBlock#PART_InputGestureText">
+            <Setter Property="Foreground" Value="Black"/>
         </Style>
         
         <!-- TextBox Watermark (Placeholder) Color -->
@@ -250,12 +268,12 @@
                                 
                                 <!-- Color Picker Submenu -->
                                 <MenuItem Header="Color" FontSize="11">
-                                    <MenuItem Header="🟡 Yellow" Command="{Binding ChangeColorCommand}" CommandParameter="0" FontSize="11"/>
-                                    <MenuItem Header="🔵 Blue" Command="{Binding ChangeColorCommand}" CommandParameter="1" FontSize="11"/>
-                                    <MenuItem Header="🩷 Pink" Command="{Binding ChangeColorCommand}" CommandParameter="2" FontSize="11"/>
-                                    <MenuItem Header="🟢 Green" Command="{Binding ChangeColorCommand}" CommandParameter="3" FontSize="11"/>
-                                    <MenuItem Header="🟣 Purple" Command="{Binding ChangeColorCommand}" CommandParameter="4" FontSize="11"/>
-                                    <MenuItem Header="⚪ White" Command="{Binding ChangeColorCommand}" CommandParameter="5" FontSize="11"/>
+                                    <MenuItem Header="● Yellow" Command="{Binding ChangeColorCommand}" CommandParameter="0" FontSize="11"/>
+                                    <MenuItem Header="● Blue" Command="{Binding ChangeColorCommand}" CommandParameter="1" FontSize="11"/>
+                                    <MenuItem Header="● Pink" Command="{Binding ChangeColorCommand}" CommandParameter="2" FontSize="11"/>
+                                    <MenuItem Header="● Green" Command="{Binding ChangeColorCommand}" CommandParameter="3" FontSize="11"/>
+                                    <MenuItem Header="● Purple" Command="{Binding ChangeColorCommand}" CommandParameter="4" FontSize="11"/>
+                                    <MenuItem Header="○ White" Command="{Binding ChangeColorCommand}" CommandParameter="5" FontSize="11"/>
                                 </MenuItem>
                                 <Separator/>
                                 
