@@ -5,10 +5,12 @@ using Microsoft.Extensions.Logging;
 using Serilog;
 using Serilog.Events;
 using StickyNotesClassic.App.Services;
+using StickyNotesClassic.App.Services.Hotkeys;
 using StickyNotesClassic.App.ViewModels;
 using StickyNotesClassic.Core.Data;
 using StickyNotesClassic.Core.Repositories;
 using StickyNotesClassic.Core.Services;
+using StickyNotesClassic.Core.Utilities;
 
 namespace StickyNotesClassic.App;
 
@@ -20,11 +22,7 @@ public static class ServiceConfiguration
     public static IServiceCollection ConfigureServices(this IServiceCollection services)
     {
         // Configure Serilog
-        var logPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Lou32StickyNotes",
-            "Logs",
-            "app-.log");
+        var logPath = Path.Combine(AppPathHelper.GetLogsDirectory(), "app-.log");
 
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Information()
@@ -53,12 +51,28 @@ public static class ServiceConfiguration
         // App-specific services
         services.AddSingleton<ThemeService>();
         services.AddSingleton<BackupService>();
-        
-        // Platform-specific hotkey service
-        if (OperatingSystem.IsWindows())
+        services.AddSingleton<IDialogService, DialogService>();
+        services.AddSingleton<IHotkeyRegistrar>(sp =>
         {
-            services.AddSingleton<HotkeyService>();
-        }
+            var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
+            if (OperatingSystem.IsWindows())
+            {
+                return new WindowsHotkeyRegistrar(loggerFactory.CreateLogger<WindowsHotkeyRegistrar>());
+            }
+
+            if (OperatingSystem.IsLinux())
+            {
+                return new LinuxHotkeyRegistrar(loggerFactory.CreateLogger<LinuxHotkeyRegistrar>());
+            }
+
+            if (OperatingSystem.IsMacOS())
+            {
+                return new MacHotkeyRegistrar(loggerFactory.CreateLogger<MacHotkeyRegistrar>());
+            }
+
+            return new NullHotkeyRegistrar(loggerFactory.CreateLogger<NullHotkeyRegistrar>());
+        });
+        services.AddSingleton<HotkeyService>();
 
         // ViewModels are transient (created fresh for each window)
         services.AddTransient<SettingsViewModel>();

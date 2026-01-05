@@ -1,8 +1,14 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Documents;
 using Avalonia.Input;
+using Avalonia.Interactivity;
+using Avalonia.Media;
+using AvRichTextBox;
 using StickyNotesClassic.App.ViewModels;
+using StickyNotesClassic.Core.Utilities;
 using System;
+using System.ComponentModel;
 
 namespace StickyNotesClassic.App.Views;
 
@@ -10,24 +16,30 @@ public partial class NoteWindow : Window
 {
     private NoteWindowViewModel? ViewModel => DataContext as NoteWindowViewModel;
     private Canvas? _resizeGrip;
+    private RichTextBox? _editor;
+    private bool _loadingDocument;
 
     public NoteWindow()
     {
         InitializeComponent();
-        
+
+        ApplyPlatformWindowSettings();
+
         // Get reference to resize grip and attach its handler
         _resizeGrip = this.FindControl<Canvas>("ResizeGrip");
         if (_resizeGrip != null)
         {
             _resizeGrip.PointerPressed += OnResizeGripPressed;
         }
-        
+
         // Enable window dragging from anywhere else
         PointerPressed += OnPointerPressed;
-        
+
         // Track position and size changes
         PositionChanged += OnPositionChanged;
         SizeChanged += OnSizeChanged;
+
+        _editor = this.FindControl<RichTextBox>("RichEditor");
     }
 
     protected override void OnDataContextChanged(EventArgs e)
@@ -37,6 +49,37 @@ public partial class NoteWindow : Window
         if (ViewModel != null)
         {
             ViewModel.RequestOpenSettings += OnRequestOpenSettings;
+            InitializeEditorContent();
+        }
+    }
+
+    private void ApplyPlatformWindowSettings()
+    {
+        // macOS: prefer the native title bar and resizing chrome because
+        // transparent, decoration-less windows lose resize hit-testing.
+        if (OperatingSystem.IsMacOS())
+        {
+            SystemDecorations = SystemDecorations.Full;
+            ExtendClientAreaToDecorationsHint = false;
+            TransparencyLevelHint = new[] { WindowTransparencyLevel.None };
+            Background = Brushes.Transparent;
+            return;
+        }
+
+        // Linux: several window managers suppress resize hit-testing when
+        // client-area extensions remove the native border. Keep a minimal
+        // system frame so resizing remains reliable while avoiding a full
+        // title bar when possible.
+        if (OperatingSystem.IsLinux())
+        {
+            SystemDecorations = SystemDecorations.BorderOnly;
+            ExtendClientAreaToDecorationsHint = false;
+            TransparencyLevelHint = new[]
+            {
+                WindowTransparencyLevel.Transparent,
+                WindowTransparencyLevel.None
+            };
+            Background = Brushes.Transparent;
         }
     }
 
@@ -83,5 +126,127 @@ public partial class NoteWindow : Window
         {
             await app.OpenSettingsWindowAsync();
         }
+    }
+
+    private void InitializeEditorContent()
+    {
+        if (_editor == null || ViewModel == null)
+        {
+            return;
+        }
+
+        _editor.KeyDown -= OnEditorKeyDown;
+        _editor.KeyDown += OnEditorKeyDown;
+
+        _loadingDocument = true;
+
+        try
+        {
+            _editor.NewDocument();
+            var normalized = RtfHelper.EnsureRtf(ViewModel.ContentRtf, ViewModel.ContentText, ViewModel.FontFamily, ViewModel.FontSize);
+            _editor.LoadRtf(normalized);
+
+            SyncEditorContent();
+
+            if (_editor.FlowDocument != null)
+            {
+                _editor.FlowDocument.PropertyChanged -= OnFlowDocumentPropertyChanged;
+                _editor.FlowDocument.PropertyChanged += OnFlowDocumentPropertyChanged;
+            }
+        }
+        finally
+        {
+            _loadingDocument = false;
+        }
+    }
+
+    private void OnFlowDocumentPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (_loadingDocument)
+        {
+            return;
+        }
+
+        if (string.Equals(e.PropertyName, nameof(FlowDocument.Text), StringComparison.Ordinal) || string.IsNullOrEmpty(e.PropertyName))
+        {
+            SyncEditorContent();
+        }
+    }
+
+    private void SyncEditorContent()
+    {
+        if (_editor?.FlowDocument == null || ViewModel == null)
+        {
+            return;
+        }
+
+        var plainText = _editor.FlowDocument.Text ?? string.Empty;
+        if (!string.Equals(ViewModel.ContentText, plainText, StringComparison.Ordinal))
+        {
+            ViewModel.ContentText = plainText;
+        }
+
+        var rtf = _editor.SaveRtf();
+        if (!string.Equals(ViewModel.ContentRtf, rtf, StringComparison.Ordinal))
+        {
+            ViewModel.ContentRtf = rtf;
+        }
+    }
+
+    private void OnEditorKeyDown(object? sender, KeyEventArgs e)
+    {
+        var modifier = OperatingSystem.IsMacOS() ? KeyModifiers.Meta : KeyModifiers.Control;
+
+        if ((e.KeyModifiers & modifier) == modifier)
+        {
+            switch (e.Key)
+            {
+                case Key.B:
+                    ApplyFormatting(TextElement.FontWeightProperty, FontWeight.Bold, FontWeight.Normal);
+                    e.Handled = true;
+                    break;
+                case Key.I:
+                    ApplyFormatting(TextElement.FontStyleProperty, FontStyle.Italic, FontStyle.Normal);
+                    e.Handled = true;
+                    break;
+                case Key.U:
+                    ApplyFormatting(TextBlock.TextDecorationsProperty, TextDecorations.Underline, new TextDecorationCollection());
+                    e.Handled = true;
+                    break;
+            }
+        }
+    }
+
+    private void ApplyFormatting(AvaloniaProperty property, object onValue, object? offValue)
+    {
+        if (_editor?.FlowDocument?.Selection == null)
+        {
+            return;
+        }
+
+        var current = _editor.FlowDocument.Selection.GetFormatting(property);
+        var target = Equals(current, onValue) ? offValue ?? new TextDecorationCollection() : onValue;
+        _editor.FlowDocument.Selection.ApplyFormatting(property, target);
+        SyncEditorContent();
+    }
+
+    private void OnBoldClicked(object? sender, RoutedEventArgs e)
+    {
+        ApplyFormatting(TextElement.FontWeightProperty, FontWeight.Bold, FontWeight.Normal);
+    }
+
+    private void OnItalicClicked(object? sender, RoutedEventArgs e)
+    {
+        ApplyFormatting(TextElement.FontStyleProperty, FontStyle.Italic, FontStyle.Normal);
+    }
+
+    private void OnUnderlineClicked(object? sender, RoutedEventArgs e)
+    {
+        ApplyFormatting(TextBlock.TextDecorationsProperty, TextDecorations.Underline, new TextDecorationCollection());
+    }
+
+    private void OnSelectAllClicked(object? sender, RoutedEventArgs e)
+    {
+        _editor?.FlowDocument?.SelectAll();
     }
 }

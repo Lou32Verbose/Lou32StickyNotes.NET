@@ -2,8 +2,12 @@ using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 using StickyNotesClassic.Core.Data;
 using StickyNotesClassic.Core.Models;
+using StickyNotesClassic.Core.Services;
+using System;
 using System.Globalization;
+using StickyNotesClassic.Core.Utilities;
 using System.Text.Json;
+using System.Threading;
 
 namespace StickyNotesClassic.Core.Repositories;
 
@@ -14,6 +18,7 @@ public class NotesRepository : INotesRepository
 {
     private readonly NotesDbContext _dbContext;
     private readonly ILogger<NotesRepository> _logger;
+    private readonly SemaphoreSlim _writeGate = new(1, 1);
 
     public NotesRepository(NotesDbContext dbContext, ILogger<NotesRepository> logger)
     {
@@ -23,7 +28,7 @@ public class NotesRepository : INotesRepository
 
     public async Task<List<Note>> GetAllActiveNotesAsync()
     {
-        var conn = _dbContext.GetConnection();
+        await using var conn = await _dbContext.CreateConnectionAsync().ConfigureAwait(false);
         var notes = new List<Note>();
 
         using var cmd = conn.CreateCommand();
@@ -45,17 +50,17 @@ public class NotesRepository : INotesRepository
 
     public async Task<Note?> GetNoteByIdAsync(string id)
     {
-        var conn = _dbContext.GetConnection();
+        await using var conn = await _dbContext.CreateConnectionAsync().ConfigureAwait(false);
 
-        using var cmd = conn.CreateCommand();
+        await using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            SELECT id, created_utc, updated_utc, color, is_topmost, x, y, width, height, 
+            SELECT id, created_utc, updated_utc, color, is_topmost, x, y, width, height,
                    content_rtf, content_text, is_deleted
-            FROM notes 
+            FROM notes
             WHERE id = @id;";
         cmd.Parameters.AddWithValue("@id", id);
 
-        using var reader = await cmd.ExecuteReaderAsync();
+        await using var reader = await cmd.ExecuteReaderAsync().ConfigureAwait(false);
         if (await reader.ReadAsync())
         {
             return MapNoteFromReader(reader);
@@ -69,14 +74,17 @@ public class NotesRepository : INotesRepository
         note.UpdatedUtc = DateTime.UtcNow;
         note.ValidateBounds();
 
-        var conn = _dbContext.GetConnection();
+        await _writeGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            await using var conn = await _dbContext.CreateConnectionAsync().ConfigureAwait(false);
 
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = @"
-            INSERT INTO notes (id, created_utc, updated_utc, color, is_topmost, x, y, width, height, 
-                              content_rtf, content_text, is_deleted)
-            VALUES (@id, @created_utc, @updated_utc, @color, @is_topmost, @x, @y, @width, @height, 
-                    @content_rtf, @content_text, @is_deleted)
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                INSERT INTO notes (id, created_utc, updated_utc, color, is_topmost, x, y, width, height,
+                                  content_rtf, content_text, is_deleted)
+                VALUES (@id, @created_utc, @updated_utc, @color, @is_topmost, @x, @y, @width, @height,
+                        @content_rtf, @content_text, @is_deleted)
             ON CONFLICT(id) DO UPDATE SET
                 updated_utc = @updated_utc,
                 color = @color,
@@ -89,46 +97,59 @@ public class NotesRepository : INotesRepository
                 content_text = @content_text,
                 is_deleted = @is_deleted;";
 
-        cmd.Parameters.AddWithValue("@id", note.Id);
-        cmd.Parameters.AddWithValue("@created_utc", note.CreatedUtc.ToString("O")); // ISO 8601
-        cmd.Parameters.AddWithValue("@updated_utc", note.UpdatedUtc.ToString("O"));
-        cmd.Parameters.AddWithValue("@color", (int)note.Color);
-        cmd.Parameters.AddWithValue("@is_topmost", note.IsTopmost ? 1 : 0);
-        cmd.Parameters.AddWithValue("@x", note.X);
-        cmd.Parameters.AddWithValue("@y", note.Y);
-        cmd.Parameters.AddWithValue("@width", note.Width);
-        cmd.Parameters.AddWithValue("@height", note.Height);
-        cmd.Parameters.AddWithValue("@content_rtf", note.ContentRtf);
-        cmd.Parameters.AddWithValue("@content_text", note.ContentText);
-        cmd.Parameters.AddWithValue("@is_deleted", note.IsDeleted ? 1 : 0);
+            cmd.Parameters.AddWithValue("@id", note.Id);
+            cmd.Parameters.AddWithValue("@created_utc", note.CreatedUtc.ToString("O")); // ISO 8601
+            cmd.Parameters.AddWithValue("@updated_utc", note.UpdatedUtc.ToString("O"));
+            cmd.Parameters.AddWithValue("@color", (int)note.Color);
+            cmd.Parameters.AddWithValue("@is_topmost", note.IsTopmost ? 1 : 0);
+            cmd.Parameters.AddWithValue("@x", note.X);
+            cmd.Parameters.AddWithValue("@y", note.Y);
+            cmd.Parameters.AddWithValue("@width", note.Width);
+            cmd.Parameters.AddWithValue("@height", note.Height);
+            cmd.Parameters.AddWithValue("@content_rtf", note.ContentRtf);
+            cmd.Parameters.AddWithValue("@content_text", note.ContentText);
+            cmd.Parameters.AddWithValue("@is_deleted", note.IsDeleted ? 1 : 0);
 
-        await cmd.ExecuteNonQueryAsync();
+            await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            _writeGate.Release();
+        }
     }
 
     public async Task SoftDeleteNoteAsync(string id)
     {
-        var conn = _dbContext.GetConnection();
+        await _writeGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            await using var conn = await _dbContext.CreateConnectionAsync().ConfigureAwait(false);
 
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = @"
-            UPDATE notes 
-            SET is_deleted = 1, updated_utc = @updated_utc 
-            WHERE id = @id;";
-        cmd.Parameters.AddWithValue("@id", id);
-        cmd.Parameters.AddWithValue("@updated_utc", DateTime.UtcNow.ToString("O"));
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                UPDATE notes
+                SET is_deleted = 1, updated_utc = @updated_utc
+                WHERE id = @id;";
+            cmd.Parameters.AddWithValue("@id", id);
+            cmd.Parameters.AddWithValue("@updated_utc", DateTime.UtcNow.ToString("O"));
 
-        await cmd.ExecuteNonQueryAsync();
+            await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            _writeGate.Release();
+        }
     }
 
     public async Task<AppSettings> GetSettingsAsync()
     {
-        var conn = _dbContext.GetConnection();
+        await using var conn = await _dbContext.CreateConnectionAsync().ConfigureAwait(false);
         var settings = new AppSettings();
 
-        using var cmd = conn.CreateCommand();
+        await using var cmd = conn.CreateCommand();
         cmd.CommandText = "SELECT key, value FROM settings;";
 
-        using var reader = await cmd.ExecuteReaderAsync();
+        await using var reader = await cmd.ExecuteReaderAsync().ConfigureAwait(false);
         var settingsDict = new Dictionary<string, string>();
         
         while (await reader.ReadAsync())
@@ -155,6 +176,8 @@ public class NotesRepository : INotesRepository
                 settings.EnableGlossyHeader = bool.TryParse(glossyHeader, out var glossy) ? glossy : settings.EnableGlossyHeader;
             if (settingsDict.TryGetValue("EnableTextShadow", out var textShadow))
                 settings.EnableTextShadow = bool.TryParse(textShadow, out var ts) ? ts : settings.EnableTextShadow;
+            if (settingsDict.TryGetValue("AskBeforeClose", out var askBeforeClose))
+                settings.AskBeforeClose = bool.TryParse(askBeforeClose, out var ask) ? ask : settings.AskBeforeClose;
             if (settingsDict.TryGetValue("HotkeyModifiers", out var modifiers))
                 settings.HotkeyModifiers = modifiers;
             if (settingsDict.TryGetValue("HotkeyKey", out var key))
@@ -163,6 +186,8 @@ public class NotesRepository : INotesRepository
                 settings.AutoBackupEnabled = bool.TryParse(backupEnabled, out var enabled) ? enabled : settings.AutoBackupEnabled;
             if (settingsDict.TryGetValue("AutoBackupRetentionDays", out var retentionDays))
                 settings.AutoBackupRetentionDays = int.TryParse(retentionDays, out var days) ? days : settings.AutoBackupRetentionDays;
+            if (settingsDict.TryGetValue("AutoBackupRetentionCount", out var retentionCount))
+                settings.AutoBackupRetentionCount = int.TryParse(retentionCount, out var count) ? count : settings.AutoBackupRetentionCount;
         }
         catch (Exception ex)
         {
@@ -174,8 +199,9 @@ public class NotesRepository : INotesRepository
 
     public async Task SaveSettingsAsync(AppSettings settings)
     {
-        var conn = _dbContext.GetConnection();
-        
+        await _writeGate.WaitAsync().ConfigureAwait(false);
+        await using var conn = await _dbContext.CreateConnectionAsync().ConfigureAwait(false);
+
         // Serialize to key-value pairs
         var settingsDict = new Dictionary<string, string>
         {
@@ -186,35 +212,108 @@ public class NotesRepository : INotesRepository
             { "EnableEnhancedShadow", settings.EnableEnhancedShadow.ToString() },
             { "EnableGlossyHeader", settings.EnableGlossyHeader.ToString() },
             { "EnableTextShadow", settings.EnableTextShadow.ToString() },
+            { "AskBeforeClose", settings.AskBeforeClose.ToString() },
             { "HotkeyModifiers", settings.HotkeyModifiers },
             { "HotkeyKey", settings.HotkeyKey },
             { "AutoBackupEnabled", settings.AutoBackupEnabled.ToString() },
-            { "AutoBackupRetentionDays", settings.AutoBackupRetentionDays.ToString() }
+            { "AutoBackupRetentionDays", settings.AutoBackupRetentionDays.ToString() },
+            { "AutoBackupRetentionCount", settings.AutoBackupRetentionCount.ToString() }
         };
 
-        using var transaction = conn.BeginTransaction();
+        await using var transaction = await conn.BeginTransactionAsync().ConfigureAwait(false) as SqliteTransaction
+            ?? throw new InvalidOperationException("Failed to open SQLite transaction for settings save.");
         try
         {
             foreach (var kvp in settingsDict)
             {
-                using var cmd = conn.CreateCommand();
+                await using var cmd = conn.CreateCommand();
                 cmd.Transaction = transaction;
                 cmd.CommandText = @"
-                    INSERT INTO settings (key, value) 
+                    INSERT INTO settings (key, value)
                     VALUES (@key, @value)
                     ON CONFLICT(key) DO UPDATE SET value = @value;";
                 cmd.Parameters.AddWithValue("@key", kvp.Key);
                 cmd.Parameters.AddWithValue("@value", kvp.Value);
-                await cmd.ExecuteNonQueryAsync();
+                await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
             }
 
-            transaction.Commit();
+            await transaction.CommitAsync().ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to save settings");
-            transaction.Rollback();
+            await transaction.RollbackAsync().ConfigureAwait(false);
             throw;
+        }
+        finally
+        {
+            _writeGate.Release();
+        }
+    }
+
+    public async Task<int> UpdateAllNoteFontsAsync(string fontFamily, double fontSize)
+    {
+        var fontValidation = ValidationService.ValidateFontFamily(fontFamily);
+        if (!fontValidation.IsValid)
+        {
+            throw new ArgumentException(fontValidation.ErrorMessage);
+        }
+
+        var clampedSize = Math.Clamp(fontSize, 8, 72);
+        await _writeGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            await using var conn = await _dbContext.CreateConnectionAsync().ConfigureAwait(false);
+            var updatedCount = 0;
+
+            await using var transaction = await conn.BeginTransactionAsync().ConfigureAwait(false) as SqliteTransaction
+                ?? throw new InvalidOperationException("Failed to open SQLite transaction for font update.");
+            try
+            {
+                await using var selectCmd = conn.CreateCommand();
+                selectCmd.Transaction = transaction;
+                selectCmd.CommandText = @"SELECT id, content_text FROM notes WHERE is_deleted = 0;";
+
+                var updates = new List<(string Id, string ContentRtf)>();
+
+                await using (var reader = await selectCmd.ExecuteReaderAsync().ConfigureAwait(false))
+                {
+                    while (await reader.ReadAsync().ConfigureAwait(false))
+                    {
+                        var id = reader.GetString(0);
+                        var contentText = reader.IsDBNull(1) ? string.Empty : reader.GetString(1);
+                        var rtf = RtfHelper.BuildRtf(contentText, fontFamily, clampedSize);
+                        updates.Add((id, rtf));
+                    }
+                }
+
+                foreach (var update in updates)
+                {
+                    await using var updateCmd = conn.CreateCommand();
+                    updateCmd.Transaction = transaction;
+                    updateCmd.CommandText = @"UPDATE notes SET content_rtf = @rtf, updated_utc = @updated WHERE id = @id;";
+                    updateCmd.Parameters.AddWithValue("@rtf", update.ContentRtf);
+                    updateCmd.Parameters.AddWithValue("@updated", DateTime.UtcNow.ToString("O"));
+                    updateCmd.Parameters.AddWithValue("@id", update.Id);
+
+                    updatedCount += await updateCmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+                }
+
+                await transaction.CommitAsync().ConfigureAwait(false);
+                _logger.LogInformation("Updated fonts for {Count} note(s) to {FontFamily} {FontSize}", updatedCount, fontFamily, clampedSize);
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync().ConfigureAwait(false);
+                _logger.LogError(ex, "Failed to update fonts for all notes");
+                throw;
+            }
+
+            return updatedCount;
+        }
+        finally
+        {
+            _writeGate.Release();
         }
     }
 

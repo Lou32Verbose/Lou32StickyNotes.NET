@@ -36,4 +36,9 @@ public interface INotesRepository
     /// Saves application settings.
     /// </summary>
     Task SaveSettingsAsync(AppSettings settings);
+
+    /// <summary>
+    /// Rewrites stored note content to use the provided font settings.
+    /// </summary>
+    Task<int> UpdateAllNoteFontsAsync(string fontFamily, double fontSize);
 }

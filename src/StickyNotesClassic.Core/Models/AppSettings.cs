@@ -36,6 +36,11 @@ public class AppSettings
     public int AutoBackupRetentionDays { get; set; } = 7;
 
     /// <summary>
+    /// Maximum number of automatic backups to retain.
+    /// </summary>
+    public int AutoBackupRetentionCount { get; set; } = 10;
+
+    /// <summary>
     /// Default color for newly created notes.
     /// </summary>
     public NoteColor DefaultNoteColor { get; set; } = NoteColor.Yellow;
@@ -59,4 +64,9 @@ public class AppSettings
     /// Enable subtle text shadow on darker note colors.
     /// </summary>
     public bool EnableTextShadow { get; set; } = false;
+
+    /// <summary>
+    /// Prompt before closing a note that has content.
+    /// </summary>
+    public bool AskBeforeClose { get; set; } = true;
 }

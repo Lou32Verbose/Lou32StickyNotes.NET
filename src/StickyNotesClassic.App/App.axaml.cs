@@ -9,10 +9,12 @@ using StickyNotesClassic.Core.Models;
 using StickyNotesClassic.Core.Repositories;
 using StickyNotesClassic.Core.Services;
 using StickyNotesClassic.App.Services;
+using StickyNotesClassic.App.Services.Hotkeys;
 using StickyNotesClassic.App.ViewModels;
 using StickyNotesClassic.App.Views;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace StickyNotesClassic.App;
@@ -22,6 +24,7 @@ public partial class App : Application
     private IServiceProvider? _services;
     private ILogger<App>? _logger;
     private readonly List<NoteWindow> _openWindows = new();
+    private HotkeyService? _hotkeyService;
 
     /// <summary>
     /// Gets the BackupService instance for use by SettingsWindow.
@@ -73,6 +76,7 @@ public partial class App : Application
                     var dbContext = _services!.GetRequiredService<NotesDbContext>();
                     var repository = _services.GetRequiredService<INotesRepository>();
                     var backupService = _services.GetService<BackupService>();
+                    _hotkeyService = _services.GetRequiredService<HotkeyService>();
                     
                     _logger!.LogInformation("Initializing database");
                     await dbContext.InitializeAsync();
@@ -82,12 +86,19 @@ public partial class App : Application
                     _logger.LogInformation("Loading application settings");
                     var settings = await repository.GetSettingsAsync();
                     _logger.LogInformation("Settings loaded. AutoBackup: {AutoBackupEnabled}", settings.AutoBackupEnabled);
-                    
+
                     if (settings.AutoBackupEnabled && backupService != null)
                     {
-                        backupService.ScheduleDailyBackup(settings.AutoBackupRetentionDays);
-                        _logger.LogInformation("Auto-backup scheduled for {RetentionDays} days retention", settings.AutoBackupRetentionDays);
+                        backupService.ScheduleDailyBackup(settings.AutoBackupRetentionDays, settings.AutoBackupRetentionCount);
+                        _logger.LogInformation("Auto-backup scheduled for {RetentionDays} days and {RetentionCount} file retention", settings.AutoBackupRetentionDays, settings.AutoBackupRetentionCount);
                     }
+
+                    _hotkeyService.HotkeyPressed += (_, _) =>
+                    {
+                        Avalonia.Threading.Dispatcher.UIThread.Post(OnCreateNewNote);
+                    };
+
+                    await _hotkeyService.TryRegisterAsync(settings, CancellationToken.None);
                     
                     _logger.LogInformation("Loading and showing notes");
                     await LoadAndShowNotesAsync();
@@ -190,13 +201,14 @@ public partial class App : Application
             foreach (var note in notes)
             {
                 _logger?.LogDebug("Creating window for note {NoteId}", note.Id);
-                CreateNoteWindow(note, autosaveService, themeService, repository);
+                var dialogService = _services!.GetRequiredService<IDialogService>();
+                CreateNoteWindow(note, autosaveService, themeService, repository, dialogService);
             }
             _logger?.LogInformation("All windows created successfully");
         });
     }
 
-    private void CreateNoteWindow(Note note, AutosaveService autosaveService, ThemeService themeService, INotesRepository repository)
+    private void CreateNoteWindow(Note note, AutosaveService autosaveService, ThemeService themeService, INotesRepository repository, IDialogService dialogService)
     {
         var logger = _services?.GetRequiredService<ILogger<NoteWindowViewModel>>();
         if (logger == null)
@@ -205,7 +217,7 @@ public partial class App : Application
             return;
         }
 
-        var viewModel = new NoteWindowViewModel(note, autosaveService, themeService, repository, logger);
+        var viewModel = new NoteWindowViewModel(note, autosaveService, themeService, repository, dialogService, logger);
         var window = new NoteWindow
         {
             DataContext = viewModel,
@@ -259,8 +271,11 @@ public partial class App : Application
             return;
         }
 
-        var logger = _services.GetRequiredService<ILogger<SettingsViewModel>>();
-        var settingsVm = new SettingsViewModel(repository, logger);
+        var logger = _services!.GetRequiredService<ILogger<SettingsViewModel>>();
+        var hotkeyRegistrar = _services!.GetRequiredService<IHotkeyRegistrar>();
+        var dialogService = _services!.GetRequiredService<IDialogService>();
+        var backupService = _services!.GetRequiredService<BackupService>();
+        var settingsVm = new SettingsViewModel(repository, hotkeyRegistrar, dialogService, backupService, logger);
         var settingsWindow = new SettingsWindow
         {
             DataContext = settingsVm
@@ -287,8 +302,9 @@ public partial class App : Application
         var repository = _services?.GetService<INotesRepository>();
         var autosaveService = _services?.GetService<AutosaveService>();
         var themeService = _services?.GetService<ThemeService>();
-        
-        if (repository == null || autosaveService == null || themeService == null)
+        var dialogService = _services?.GetService<IDialogService>();
+
+        if (repository == null || autosaveService == null || themeService == null || dialogService == null)
         {
             _logger?.LogWarning("Services not available for note reload");
             return;
@@ -304,7 +320,7 @@ public partial class App : Application
             {
                 if (!existingNoteIds.Contains(note.Id))
                 {
-                    CreateNoteWindow(note, autosaveService, themeService, repository);
+                    CreateNoteWindow(note, autosaveService, themeService, repository, dialogService);
                 }
             }
         });
@@ -318,8 +334,9 @@ public partial class App : Application
         var repository = _services?.GetService<INotesRepository>();
         var autosaveService = _services?.GetService<AutosaveService>();
         var themeService = _services?.GetService<ThemeService>();
-        
-        if (repository == null || autosaveService == null || themeService == null)
+        var dialogService = _services?.GetService<IDialogService>();
+
+        if (repository == null || autosaveService == null || themeService == null || dialogService == null)
         {
             _logger?.LogWarning("Services not available for creating new note");
             return;
@@ -343,10 +360,10 @@ public partial class App : Application
             await repository.UpsertNoteAsync(newNote);
             
             _logger?.LogInformation("Created new note {NoteId}", newNote.Id);
-            
+
             await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
             {
-                CreateNoteWindow(newNote, autosaveService, themeService, repository);
+                CreateNoteWindow(newNote, autosaveService, themeService, repository, dialogService);
             });
         });
     }
@@ -404,6 +421,11 @@ public partial class App : Application
         {
             Task.Run(async () => await autosaveService.FlushAllAsync()).Wait();
             _logger?.LogInformation("All pending saves flushed");
+        }
+
+        if (_hotkeyService != null)
+        {
+            _hotkeyService.Dispose();
         }
 
         // Dispose services (DI container will handle disposal)

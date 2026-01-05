@@ -1,11 +1,12 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Platform.Storage;
+using StickyNotesClassic.App.ViewModels;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
-using StickyNotesClassic.App.ViewModels;
 
 namespace StickyNotesClassic.App.Views;
 
@@ -27,6 +28,7 @@ public partial class SettingsWindow : Window
             ViewModel.RequestClose += OnRequestClose;
             ViewModel.RequestExport += OnRequestExport;
             ViewModel.RequestImport += OnRequestImport;
+            ViewModel.RequestRestore += OnRequestRestore;
         }
     }
 
@@ -56,11 +58,11 @@ public partial class SettingsWindow : Window
                 // Get BackupService from App
                 if (Application.Current is App app && app.BackupService != null)
                 {
-                    await app.BackupService.ExportNotesAsync(file.Path.LocalPath);
-                    
+                    var result = await app.BackupService.ExportNotesAsync(file.Path.LocalPath);
+
                     // Show success message
-                    await ShowMessageAsync("Export Successful", 
-                        $"Notes exported to:\n{file.Path.LocalPath}");
+                    await ShowMessageAsync("Export Successful",
+                        $"Exported {result.ExportedCount} note(s) to:\n{result.FilePath}");
                 }
             }
             catch (Exception ex)
@@ -92,20 +94,80 @@ public partial class SettingsWindow : Window
                 // Get BackupService from App
                 if (Application.Current is App app && app.BackupService != null)
                 {
-                    var importedCount = await app.BackupService.ImportNotesAsync(file.Path.LocalPath);
-                    
+                    var result = await app.BackupService.ImportNotesAsync(file.Path.LocalPath);
+
                     // Reload notes to show imported ones
                     await app.ReloadNotesAsync();
-                    
+
+                    // Show summary with any skips
+                    var message = new StringBuilder();
+                    message.AppendLine($"Imported {result.ImportedCount} note(s) from:");
+                    message.AppendLine(file.Path.LocalPath);
+
+                    if (result.SkippedCount > 0)
+                    {
+                        message.AppendLine();
+                        message.AppendLine($"Skipped {result.SkippedCount} item(s) due to errors.");
+
+                        foreach (var failure in result.Failures.Take(3))
+                        {
+                            message.AppendLine($"- {failure.Reason}");
+                        }
+
+                        if (result.Failures.Count > 3)
+                        {
+                            message.AppendLine($"...and {result.Failures.Count - 3} more");
+                        }
+
+                        message.AppendLine();
+                        message.AppendLine($"Check logs at: {result.LogDirectory}");
+                    }
+
                     // Show success message
-                    await ShowMessageAsync("Import Successful", 
-                        $"Imported {importedCount} note(s) from:\n{file.Path.LocalPath}\n\nNote windows created.");
+                    await ShowMessageAsync("Import Completed", message.ToString());
                 }
             }
             catch (Exception ex)
             {
                 await ShowMessageAsync("Import Failed", $"Error: {ex.Message}");
             }
+        }
+    }
+
+    private async void OnRequestRestore(object? sender, string filePath)
+    {
+        try
+        {
+            if (Application.Current is App app && app.BackupService != null)
+            {
+                var result = await app.BackupService.ImportNotesAsync(filePath);
+                await app.ReloadNotesAsync();
+
+                var builder = new StringBuilder();
+                builder.AppendLine($"Restored {result.ImportedCount} note(s) from:");
+                builder.AppendLine(filePath);
+
+                if (result.SkippedCount > 0)
+                {
+                    builder.AppendLine();
+                    builder.AppendLine($"Skipped {result.SkippedCount} item(s):");
+                    foreach (var failure in result.Failures.Take(3))
+                    {
+                        builder.AppendLine($"- {failure.Reason}");
+                    }
+
+                    if (result.Failures.Count > 3)
+                    {
+                        builder.AppendLine($"...and {result.Failures.Count - 3} more");
+                    }
+                }
+
+                await ShowMessageAsync("Restore Completed", builder.ToString());
+            }
+        }
+        catch (Exception ex)
+        {
+            await ShowMessageAsync("Restore Failed", $"Error: {ex.Message}");
         }
     }
 
