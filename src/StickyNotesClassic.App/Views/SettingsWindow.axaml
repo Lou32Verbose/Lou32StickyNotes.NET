@@ -55,8 +55,22 @@
                         <Button Content="Apply Font to All Existing Notes"
                                 Command="{Binding ApplyFontToAllNotesCommand}"
                                 HorizontalAlignment="Left"
-                                IsEnabled="False"
-                                ToolTip.Tip="Available when rich text is implemented"/>
+                                IsEnabled="{Binding CanApplyFontToAllNotes}"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Note Behavior Section -->
+                <Border BorderBrush="#DDDDDD" BorderThickness="1"
+                        CornerRadius="4" Padding="12">
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="Note Behavior"
+                                   FontWeight="Bold"
+                                   FontSize="12"/>
+
+                        <CheckBox Content="Confirm before deleting a note with content"
+                                  IsChecked="{Binding AskBeforeClose}"
+                                  FontSize="11"
+                                  ToolTip.Tip="Disable to skip the confirmation dialog when closing notes that contain text."/>
                     </StackPanel>
                 </Border>
 
@@ -108,11 +122,11 @@
                 </Border>
 
                 <!-- Hotkey Settings Section -->
-                <Border BorderBrush="#DDDDDD" BorderThickness="1" 
+                <Border BorderBrush="#DDDDDD" BorderThickness="1"
                         CornerRadius="4" Padding="12">
-                    <StackPanel Spacing="10">
-                        <TextBlock Text="Hotkey Settings" 
-                                   FontWeight="Bold" 
+                    <StackPanel Spacing="10" IsEnabled="{Binding SupportsGlobalHotkey}">
+                        <TextBlock Text="Hotkey Settings"
+                                   FontWeight="Bold"
                                    FontSize="12"/>
 
                         <TextBlock Text="Global hotkey to create new note:" 
@@ -133,7 +147,7 @@
                                      MaxLength="1"/>
                         </StackPanel>
 
-                        <TextBlock Text="ⓘ Windows only. macOS and Linux require elevated permissions."
+                        <TextBlock Text="{Binding HotkeyPlatformNotice}"
                                    FontSize="11"
                                    Foreground="#888888"
                                    TextWrapping="Wrap"/>
@@ -157,6 +171,11 @@
                                           Minimum="1" Maximum="365"
                                           Increment="1"
                                           FormatString="0"/>
+                            <TextBlock Text="Retention (files):" FontSize="11"/>
+                            <NumericUpDown Value="{Binding AutoBackupRetentionCount}"
+                                          Minimum="1" Maximum="365"
+                                          Increment="1"
+                                          FormatString="0"/>
                         </StackPanel>
 
                         <Separator/>
@@ -168,9 +187,19 @@
                             <Button Content="Import Notes..."
                                     Command="{Binding ImportCommand}"
                                     Width="140"/>
+                            <Button Content="Restore From Backup..."
+                                    Command="{Binding RestoreBackupCommand}"
+                                    Width="180"/>
+                            <Button Content="Restore Latest Backup"
+                                    Command="{Binding RestoreLatestBackupCommand}"
+                                    Width="170"/>
                         </StackPanel>
 
-                        <TextBlock Text="💾 Backups saved to: %LocalAppData%\Lou32StickyNotes\Backups"
+                        <TextBlock Text="{Binding BackupLocationHint}"
+                                   FontSize="11"
+                                   Foreground="#888888"
+                                   TextWrapping="Wrap"/>
+                        <TextBlock Text="{Binding LatestBackupStatus}"
                                    FontSize="11"
                                    Foreground="#888888"
                                    TextWrapping="Wrap"/>

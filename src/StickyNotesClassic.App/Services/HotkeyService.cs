@@ -1,122 +1,74 @@
 using System;
-using System.Runtime.InteropServices;
-using System.Runtime.Versioning;
+using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using StickyNotesClassic.App.Services.Hotkeys;
+using StickyNotesClassic.Core.Models;
 
 namespace StickyNotesClassic.App.Services;
 
 /// <summary>
-/// Service for registering global hotkeys.
-/// Windows implementation uses P/Invoke to Win32 APIs.
+/// Coordinates platform-specific global hotkey registration.
 /// </summary>
-public class HotkeyService : IDisposable
+public sealed class HotkeyService : IDisposable
 {
-    private const int HOTKEY_ID = 9000;
+    private readonly IHotkeyRegistrar _registrar;
     private readonly ILogger<HotkeyService> _logger;
-    private IntPtr _windowHandle;
-    private bool _isRegistered;
+    private CancellationTokenSource? _registrationScope;
 
     public event EventHandler? HotkeyPressed;
 
-    public HotkeyService(ILogger<HotkeyService> logger)
+    public HotkeyService(IHotkeyRegistrar registrar, ILogger<HotkeyService> logger)
     {
+        _registrar = registrar;
         _logger = logger;
     }
 
+    public bool IsSupported => _registrar.IsSupported;
+
     /// <summary>
-    /// Registers a global hotkey.
+    /// Attempts to register a global hotkey based on application settings.
     /// </summary>
-    /// <param name="windowHandle">Window handle to receive hotkey messages</param>
-    /// <param name="modifiers">Modifier keys (e.g., "Control,Alt")</param>
-    /// <param name="key">Key character (e.g., "N")</param>
-    [SupportedOSPlatform("windows")]
-    public bool RegisterHotkey(IntPtr windowHandle, string modifiers, string key)
+    public async Task<bool> TryRegisterAsync(AppSettings settings, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(modifiers) || string.IsNullOrWhiteSpace(key))
+        if (!_registrar.IsSupported)
         {
+            _logger.LogInformation("Global hotkeys are not supported on this platform: {Reason}",
+                _registrar.UnsupportedReason ?? "platform limitation");
             return false;
         }
 
-        _windowHandle = windowHandle;
-
-        // Parse modifiers
-        uint modifierFlags = 0;
-        var modifierParts = modifiers.Split(',');
-        foreach (var mod in modifierParts)
+        if (string.IsNullOrWhiteSpace(settings.HotkeyKey) || string.IsNullOrWhiteSpace(settings.HotkeyModifiers))
         {
-            var trimmed = mod.Trim();
-            if (trimmed.Equals("Control", StringComparison.OrdinalIgnoreCase))
-                modifierFlags |= MOD_CONTROL;
-            else if (trimmed.Equals("Alt", StringComparison.OrdinalIgnoreCase))
-                modifierFlags |= MOD_ALT;
-            else if (trimmed.Equals("Shift", StringComparison.OrdinalIgnoreCase))
-                modifierFlags |= MOD_SHIFT;
-        }
-
-        // Parse key (take first character, convert to uppercase)
-        var keyChar = key.Trim().ToUpper()[0];
-        uint vkCode = (uint)keyChar;
-
-        // Register the hotkey
-        try
-        {
-            _isRegistered = RegisterHotKey(_windowHandle, HOTKEY_ID, modifierFlags, vkCode);
-            return _isRegistered;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to register hotkey");
+            _logger.LogWarning("Hotkey settings are incomplete; skipping registration.");
             return false;
         }
-    }
 
-    /// <summary>
-    /// Unregisters the global hotkey.
-    /// </summary>
-    [SupportedOSPlatform("windows")]
-    public void UnregisterHotkey()
-    {
-        if (_isRegistered && _windowHandle != IntPtr.Zero)
-        {
-            UnregisterHotKey(_windowHandle, HOTKEY_ID);
-            _isRegistered = false;
-        }
-    }
+        _registrationScope?.Cancel();
+        _registrationScope?.Dispose();
+        _registrationScope = CancellationTokenSource.CreateLinkedTokenSource(ct);
 
-    /// <summary>
-    /// Processes window messages to detect hotkey press.
-    /// Call this from your window's message handler.
-    /// </summary>
-    [SupportedOSPlatform("windows")]
-    public void ProcessMessage(int msg, IntPtr wParam, IntPtr lParam)
-    {
-        const int WM_HOTKEY = 0x0312;
-        
-        if (msg == WM_HOTKEY && wParam.ToInt32() == HOTKEY_ID)
+        var registered = await _registrar.RegisterAsync(settings.HotkeyModifiers, settings.HotkeyKey, () =>
         {
             HotkeyPressed?.Invoke(this, EventArgs.Empty);
-        }
+        }, _registrationScope.Token);
+
+        _logger.LogInformation("Global hotkey registration {Result}", registered ? "succeeded" : "failed");
+        return registered;
+    }
+
+    public Task UnregisterAsync(CancellationToken ct)
+    {
+        _registrationScope?.Cancel();
+        _registrationScope?.Dispose();
+        _registrationScope = null;
+        return _registrar.UnregisterAsync(ct);
     }
 
     public void Dispose()
     {
-        if (OperatingSystem.IsWindows())
-        {
-            UnregisterHotkey();
-        }
+        _registrationScope?.Cancel();
+        _registrar.Dispose();
+        _registrationScope?.Dispose();
     }
-
-    // Windows P/Invoke declarations
-    [DllImport("user32.dll", SetLastError = true)]
-    [SupportedOSPlatform("windows")]
-    private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    [SupportedOSPlatform("windows")]
-    private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
-
-    // Modifier constants
-    private const uint MOD_ALT = 0x0001;
-    private const uint MOD_CONTROL = 0x0002;
-    private const uint MOD_SHIFT = 0x0004;
 }

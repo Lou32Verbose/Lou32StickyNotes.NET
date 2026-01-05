@@ -1,6 +1,7 @@
 using System;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
@@ -10,6 +11,7 @@ using StickyNotesClassic.Core.Services;
 using StickyNotesClassic.Core.Repositories;
 using StickyNotesClassic.App.Services;
 using StickyNotesClassic.App.Messages;
+using StickyNotesClassic.App.Diagnostics;
 
 namespace StickyNotesClassic.App.ViewModels;
 
@@ -21,6 +23,7 @@ public class NoteWindowViewModel : INotifyPropertyChanged, IDisposable
     private readonly AutosaveService _autosaveService;
     private readonly ThemeService _themeService;
     private readonly INotesRepository _repository;
+    private readonly IDialogService _dialogService;
     private readonly ILogger<NoteWindowViewModel> _logger;
     private Note _note;
     private string _contentRtf;
@@ -31,67 +34,56 @@ public class NoteWindowViewModel : INotifyPropertyChanged, IDisposable
     private bool _enableEnhancedShadow = true;
     private bool _enableGlossyHeader = true;
     private bool _enableTextShadow = false;
+    private bool _askBeforeClose = true;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    public NoteWindowViewModel(Note note, AutosaveService autosaveService, ThemeService themeService, INotesRepository repository, ILogger<NoteWindowViewModel> logger)
+    public NoteWindowViewModel(Note note, AutosaveService autosaveService, ThemeService themeService, INotesRepository repository, IDialogService dialogService, ILogger<NoteWindowViewModel> logger)
     {
         _note = note;
         _autosaveService = autosaveService;
         _themeService = themeService;
         _repository = repository;
+        _dialogService = dialogService;
         _logger = logger;
         _contentRtf = note.ContentRtf;
         _contentText = note.ContentText;
 
         // Commands
         CreateNewNoteCommand = new RelayCommand(OnCreateNewNote);
-        CloseNoteCommand = new RelayCommand(OnCloseNote);
+        CloseNoteCommand = new AsyncRelayCommand(OnCloseNoteAsync);
         ToggleTopmostCommand = new RelayCommand(OnToggleTopmost);
         ChangeColorCommand = new RelayCommand<object>(p => OnChangeColor(p as NoteColor?));
         OpenSettingsCommand = new RelayCommand(OnOpenSettings);
 
-        // Load font settings asynchronously
-        LoadFontSettingsAsync();
+        // Load settings asynchronously
+        LoadSettingsAsync();
         
         // Subscribe to settings changes via messaging
         WeakReferenceMessenger.Default.Register<SettingsChangedMessage>(this, (r, m) => OnSettingsChangedMessage());
     }
 
-    private void OnSettingsChanged(object? sender, EventArgs e)
-    {
-        // Reload font settings when settings change
-        LoadFontSettingsAsync();
-    }
-
-    private async void LoadFontSettingsAsync()
+    private async void LoadSettingsAsync()
     {
         try
         {
             var settings = await _repository.GetSettingsAsync();
-            FontFamily = settings.DefaultFontFamily;
-            FontSize = settings.DefaultFontSize;
+            ApplySettings(settings);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to load font settings for note {NoteId}", _note.Id);
+            _logger.LogError(ex, "Failed to load settings for note {NoteId}", _note.Id);
         }
     }
 
     private async void OnSettingsChangedMessage()
     {
         _logger.LogDebug("Received settings changed message for note {NoteId}", _note.Id);
-        
+
         try
         {
             var settings = await _repository.GetSettingsAsync();
-            FontFamily = settings.DefaultFontFamily;
-            FontSize = settings.DefaultFontSize;
-            
-            EnableBackgroundGradient = settings.EnableBackgroundGradient;
-            EnableEnhancedShadow = settings.EnableEnhancedShadow;
-            EnableGlossyHeader = settings.EnableGlossyHeader;
-            EnableTextShadow = settings.EnableTextShadow;
+            ApplySettings(settings);
         }
         catch (Exception ex)
         {
@@ -146,8 +138,9 @@ public class NoteWindowViewModel : INotifyPropertyChanged, IDisposable
                     _logger.LogWarning("Invalid RTF content rejected for note {NoteId}: {Error}", _note.Id, validation.ErrorMessage);
                     return;
                 }
-                
+
                 _contentRtf = value;
+                _note.ContentRtf = value;
                 OnPropertyChanged();
                 // Debounced save
                 _autosaveService.EnqueueContentChanged(_note.Id, _contentRtf, _contentText);
@@ -249,6 +242,21 @@ public class NoteWindowViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
+    public bool AskBeforeClose
+    {
+        get => _askBeforeClose;
+        set
+        {
+            if (_askBeforeClose != value)
+            {
+                _askBeforeClose = value;
+                OnPropertyChanged();
+            }
+        }
+    }
+
+    public bool ShowHitTestOverlay => DebugOptions.ShowHitTestOverlay;
+
     public ICommand CreateNewNoteCommand { get; }
     public ICommand CloseNoteCommand { get; }
     public ICommand ToggleTopmostCommand { get; }
@@ -275,16 +283,56 @@ public class NoteWindowViewModel : INotifyPropertyChanged, IDisposable
         RequestCreateNewNote?.Invoke(this, EventArgs.Empty);
     }
 
-    private void OnCloseNote()
+    private async Task OnCloseNoteAsync()
     {
-        // Show confirmation if note has content
-        if (!string.IsNullOrWhiteSpace(_contentText))
+        if (!await ShouldCloseAsync())
         {
-            // TODO: Show confirmation dialog
-            // For now, just close
+            return;
         }
 
         RequestClose?.Invoke(this, EventArgs.Empty);
+    }
+
+    private async Task<bool> ShouldCloseAsync()
+    {
+        if (!_askBeforeClose || !HasContent)
+        {
+            return true;
+        }
+
+        try
+        {
+            var result = await _dialogService.ShowConfirmationAsync(new ConfirmationDialogOptions
+            {
+                Title = "Delete note?",
+                Message = "This note has content. Delete it?",
+                ConfirmText = "Delete",
+                CancelText = "Cancel",
+                IsDestructive = true,
+                ShowDoNotAskAgain = true
+            });
+
+            if (!result.Confirmed)
+            {
+                return false;
+            }
+
+            if (result.DoNotAskAgain && _askBeforeClose)
+            {
+                var settings = await _repository.GetSettingsAsync();
+                settings.AskBeforeClose = false;
+                await _repository.SaveSettingsAsync(settings);
+                _askBeforeClose = false;
+                WeakReferenceMessenger.Default.Send(new SettingsChangedMessage());
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to show close confirmation for note {NoteId}", _note.Id);
+            return true; // fail open to avoid trapping the user
+        }
     }
 
     private void OnToggleTopmost()
@@ -318,6 +366,20 @@ public class NoteWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
+
+    private void ApplySettings(AppSettings settings)
+    {
+        FontFamily = settings.DefaultFontFamily;
+        FontSize = settings.DefaultFontSize;
+
+        EnableBackgroundGradient = settings.EnableBackgroundGradient;
+        EnableEnhancedShadow = settings.EnableEnhancedShadow;
+        EnableGlossyHeader = settings.EnableGlossyHeader;
+        EnableTextShadow = settings.EnableTextShadow;
+        _askBeforeClose = settings.AskBeforeClose;
+    }
+
+    private bool HasContent => !string.IsNullOrWhiteSpace(_contentText) || !string.IsNullOrWhiteSpace(_contentRtf);
 
     public void Dispose()
     {

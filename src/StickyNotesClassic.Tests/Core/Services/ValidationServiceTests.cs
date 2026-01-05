@@ -1,6 +1,7 @@
 using FluentAssertions;
 using StickyNotesClassic.Core.Services;
 using Xunit;
+using System.IO;
 
 namespace StickyNotesClassic.Tests.Core.Services;
 
@@ -98,7 +99,7 @@ public class ValidationServiceTests
     public void ValidateFilePath_ValidPath_ShouldBeValid()
     {
         // Arrange
-        var path = "C:\\Temp\\test.json";
+        var path = Path.Combine(Path.GetTempPath(), "test.json");
         
         // Act
         var result = ValidationService.ValidateFilePath(path);

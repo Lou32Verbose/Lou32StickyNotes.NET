@@ -1,0 +1,53 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:StickyNotesClassic.App.ViewModels"
+        x:Class="StickyNotesClassic.App.Views.RestoreBackupWindow"
+        x:DataType="vm:RestoreBackupViewModel"
+        Title="Restore Backup"
+        Width="420"
+        Height="360"
+        WindowStartupLocation="CenterOwner">
+    <Window.Styles>
+        <Style Selector="ListBoxItem:selected">
+            <Setter Property="Background" Value="#e6f2ff"/>
+        </Style>
+    </Window.Styles>
+    <Grid RowDefinitions="*,Auto" Margin="12">
+        <Border BorderBrush="#ddd" BorderThickness="1" CornerRadius="4">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="120"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <TextBlock Text="Choose a backup to restore" Margin="8" FontWeight="SemiBold"/>
+
+                <ListBox Grid.Row="1" Grid.ColumnSpan="2" Items="{Binding Backups}" SelectedItem="{Binding SelectedBackup}"
+                         Margin="8" HorizontalContentAlignment="Stretch">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+                                <TextBlock Grid.Column="0" Grid.Row="0" Text="{Binding FileName}" FontWeight="SemiBold"/>
+                                <TextBlock Grid.Column="1" Grid.Row="0" Text="{Binding TimestampLocal}" HorizontalAlignment="Right"/>
+                                <StackPanel Grid.Column="0" Grid.Row="1" Orientation="Horizontal" Spacing="12">
+                                    <TextBlock Text="{Binding Status}"/>
+                                    <TextBlock Text="{Binding NoteCount, StringFormat='Notes: {0}'}"/>
+                                    <TextBlock Text="{Binding Size, StringFormat='Size: {0:N0} bytes'}"/>
+                                </StackPanel>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Grid>
+        </Border>
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,12,0,0">
+            <Button Content="Cancel" Width="90" Command="{Binding CancelCommand}"/>
+            <Button Content="Restore" Width="90" Command="{Binding ConfirmCommand}"/>
+        </StackPanel>
+    </Grid>
+</Window>
