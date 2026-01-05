@@ -8,6 +8,9 @@
         Height="360"
         WindowStartupLocation="CenterOwner">
     <Window.Styles>
+        <Style Selector="ListBoxItem">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        </Style>
         <Style Selector="ListBoxItem:selected">
             <Setter Property="Background" Value="#e6f2ff"/>
         </Style>
@@ -26,10 +29,10 @@
 
                 <TextBlock Text="Choose a backup to restore" Margin="8" FontWeight="SemiBold"/>
 
-                <ListBox Grid.Row="1" Grid.ColumnSpan="2" Items="{Binding Backups}" SelectedItem="{Binding SelectedBackup}"
-                         Margin="8" HorizontalContentAlignment="Stretch">
+                <ListBox Grid.Row="1" Grid.ColumnSpan="2" ItemsSource="{Binding Backups}" SelectedItem="{Binding SelectedBackup}"
+                         Margin="8">
                     <ListBox.ItemTemplate>
-                        <DataTemplate>
+                        <DataTemplate x:DataType="vm:BackupEntry">
                             <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
                                 <TextBlock Grid.Column="0" Grid.Row="0" Text="{Binding FileName}" FontWeight="SemiBold"/>
                                 <TextBlock Grid.Column="1" Grid.Row="0" Text="{Binding TimestampLocal}" HorizontalAlignment="Right"/>

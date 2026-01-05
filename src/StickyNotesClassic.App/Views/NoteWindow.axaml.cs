@@ -4,26 +4,42 @@ using Avalonia.Controls.Documents;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
+using Avalonia.Platform;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
 using AvRichTextBox;
 using StickyNotesClassic.App.ViewModels;
 using StickyNotesClassic.Core.Utilities;
 using System;
 using System.ComponentModel;
+using System.Linq;
 
 namespace StickyNotesClassic.App.Views;
 
 public partial class NoteWindow : Window
 {
     private NoteWindowViewModel? ViewModel => DataContext as NoteWindowViewModel;
+    private Border? _headerBorder;
     private Canvas? _resizeGrip;
     private RichTextBox? _editor;
+    private Button? _boldButton;
+    private Button? _italicButton;
+    private Button? _underlineButton;
     private bool _loadingDocument;
+    private bool _formattingStatePending;
 
     public NoteWindow()
     {
         InitializeComponent();
 
         ApplyPlatformWindowSettings();
+
+        // Header-only drag handle to avoid interfering with editor selection.
+        _headerBorder = this.FindControl<Border>("HeaderBorder");
+        if (_headerBorder != null)
+        {
+            _headerBorder.PointerPressed += OnPointerPressed;
+        }
 
         // Get reference to resize grip and attach its handler
         _resizeGrip = this.FindControl<Canvas>("ResizeGrip");
@@ -32,14 +48,19 @@ public partial class NoteWindow : Window
             _resizeGrip.PointerPressed += OnResizeGripPressed;
         }
 
-        // Enable window dragging from anywhere else
-        PointerPressed += OnPointerPressed;
-
         // Track position and size changes
         PositionChanged += OnPositionChanged;
         SizeChanged += OnSizeChanged;
 
         _editor = this.FindControl<RichTextBox>("RichEditor");
+        _boldButton = this.FindControl<Button>("BoldButton");
+        _italicButton = this.FindControl<Button>("ItalicButton");
+        _underlineButton = this.FindControl<Button>("UnderlineButton");
+
+        if (_editor != null)
+        {
+            _editor.PropertyChanged += OnEditorPropertyChanged;
+        }
     }
 
     protected override void OnDataContextChanged(EventArgs e)
@@ -81,6 +102,12 @@ public partial class NoteWindow : Window
             };
             Background = Brushes.Transparent;
         }
+
+        if (OperatingSystem.IsWindows())
+        {
+            ExtendClientAreaChromeHints = ExtendClientAreaChromeHints.NoChrome;
+            ExtendClientAreaTitleBarHeightHint = 0;
+        }
     }
 
     private void OnResizeGripPressed(object? sender, PointerPressedEventArgs e)
@@ -97,6 +124,11 @@ public partial class NoteWindow : Window
         // Only handle left button
         if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
             return;
+
+        if (e.Source is Visual visual && visual.FindAncestorOfType<Button>() != null)
+        {
+            return;
+        }
         
         // Allow dragging the window
         BeginMoveDrag(e);
@@ -145,6 +177,12 @@ public partial class NoteWindow : Window
             _editor.NewDocument();
             var normalized = RtfHelper.EnsureRtf(ViewModel.ContentRtf, ViewModel.ContentText, ViewModel.FontFamily, ViewModel.FontSize);
             _editor.LoadRtf(normalized);
+            var flowDoc = _editor.FlowDocument;
+            flowDoc.PagePadding = new Thickness(0);
+            Dispatcher.UIThread.Post(() =>
+            {
+                flowDoc.Select(flowDoc.Selection.Start, 0);
+            }, DispatcherPriority.Background);
 
             SyncEditorContent();
 
@@ -153,6 +191,8 @@ public partial class NoteWindow : Window
                 _editor.FlowDocument.PropertyChanged -= OnFlowDocumentPropertyChanged;
                 _editor.FlowDocument.PropertyChanged += OnFlowDocumentPropertyChanged;
             }
+
+            ScheduleFormattingStateUpdate();
         }
         finally
         {
@@ -228,6 +268,7 @@ public partial class NoteWindow : Window
         var target = Equals(current, onValue) ? offValue ?? new TextDecorationCollection() : onValue;
         _editor.FlowDocument.Selection.ApplyFormatting(property, target);
         SyncEditorContent();
+        ScheduleFormattingStateUpdate();
     }
 
     private void OnBoldClicked(object? sender, RoutedEventArgs e)
@@ -248,5 +289,66 @@ public partial class NoteWindow : Window
     private void OnSelectAllClicked(object? sender, RoutedEventArgs e)
     {
         _editor?.FlowDocument?.SelectAll();
+    }
+
+    private void OnEditorPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
+    {
+        if (_loadingDocument)
+        {
+            return;
+        }
+
+        var propertyName = e.Property.Name;
+        if (propertyName is "SelectionStart" or "SelectionEnd" or "SelectionLength" or "Selection")
+        {
+            ScheduleFormattingStateUpdate();
+        }
+    }
+
+    private void ScheduleFormattingStateUpdate()
+    {
+        if (_formattingStatePending)
+        {
+            return;
+        }
+
+        _formattingStatePending = true;
+        Dispatcher.UIThread.Post(() =>
+        {
+            _formattingStatePending = false;
+            UpdateFormattingButtonStates();
+        }, DispatcherPriority.Background);
+    }
+
+    private void UpdateFormattingButtonStates()
+    {
+        if (_editor?.FlowDocument?.Selection == null)
+        {
+            return;
+        }
+
+        UpdateButtonState(_boldButton, Equals(_editor.FlowDocument.Selection.GetFormatting(TextElement.FontWeightProperty), FontWeight.Bold));
+        UpdateButtonState(_italicButton, Equals(_editor.FlowDocument.Selection.GetFormatting(TextElement.FontStyleProperty), FontStyle.Italic));
+        UpdateButtonState(_underlineButton, IsUnderlineActive(_editor.FlowDocument.Selection.GetFormatting(TextBlock.TextDecorationsProperty)));
+    }
+
+    private static void UpdateButtonState(Button? button, bool isActive)
+    {
+        if (button == null)
+        {
+            return;
+        }
+
+        button.Classes.Set("is-active", isActive);
+    }
+
+    private static bool IsUnderlineActive(object? formattingValue)
+    {
+        if (formattingValue is TextDecorationCollection collection)
+        {
+            return collection.Any(decoration => decoration.Location == TextDecorationLocation.Underline);
+        }
+
+        return Equals(formattingValue, TextDecorations.Underline);
     }
 }

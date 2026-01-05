@@ -74,7 +74,22 @@
             <SolidColorBrush x:Key="IconBrush">#555555</SolidColorBrush>
             <SolidColorBrush x:Key="IconHoverBrush">#222222</SolidColorBrush>
 
+            <!-- Tooltip Colors (high-contrast, neutral) -->
+            <SolidColorBrush x:Key="ToolTipBackgroundBrush">#FFFDF2</SolidColorBrush>
+            <SolidColorBrush x:Key="ToolTipBorderBrush">#C9C39A</SolidColorBrush>
+            <SolidColorBrush x:Key="ToolTipForegroundBrush">#222222</SolidColorBrush>
+
         </Style.Resources>
+    </Style>
+
+    <Style Selector="ToolTip">
+        <Setter Property="Background" Value="{DynamicResource ToolTipBackgroundBrush}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource ToolTipBorderBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius" Value="3"/>
+        <Setter Property="Foreground" Value="{DynamicResource ToolTipForegroundBrush}"/>
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource ToolTipForegroundBrush}"/>
+        <Setter Property="Padding" Value="6,3"/>
     </Style>
 
 </Styles>

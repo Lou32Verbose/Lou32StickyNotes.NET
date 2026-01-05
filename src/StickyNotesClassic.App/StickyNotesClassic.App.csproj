@@ -13,6 +13,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Reference Include="RtfDomParserAv">
+      <HintPath>Dependencies\RtfDomParserAv.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Avalonia" Version="11.3.10" />
     <PackageReference Include="Avalonia.Desktop" Version="11.3.10" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.10" />

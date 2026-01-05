@@ -8,7 +8,7 @@ public class AppSettings
     /// <summary>
     /// Default font family for new notes.
     /// </summary>
-    public string DefaultFontFamily { get; set; } = "Segoe Print";
+    public string DefaultFontFamily { get; set; } = "Segoe UI";
 
     /// <summary>
     /// Default font size for new notes (in DIP).

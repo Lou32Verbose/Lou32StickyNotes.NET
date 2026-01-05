@@ -13,6 +13,8 @@
         SystemDecorations="None"
         TransparencyLevelHint="Transparent"
         Background="Transparent"
+        UseLayoutRounding="True"
+        RenderOptions.TextRenderingMode="SubpixelAntialias"
         CanResize="True"
         ExtendClientAreaToDecorationsHint="True"
         Topmost="{Binding IsTopmost}">
@@ -76,6 +78,25 @@
         <Style Selector="Button.header-icon:pointerover">
             <Setter Property="Background" Value="#20000000"/>
         </Style>
+
+        <!-- Formatting Buttons -->
+        <Style Selector="Button.format-toggle">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="#26000000"/>
+            <Setter Property="CornerRadius" Value="3"/>
+            <Setter Property="TextElement.Foreground" Value="{DynamicResource NoteTextBrush}"/>
+        </Style>
+        <Style Selector="Button.format-toggle:pointerover">
+            <Setter Property="Background" Value="#1A000000"/>
+            <Setter Property="BorderBrush" Value="#40000000"/>
+            <Setter Property="TextElement.Foreground" Value="{DynamicResource NoteTextBrush}"/>
+        </Style>
+        <Style Selector="Button.format-toggle.is-active">
+            <Setter Property="Background" Value="#3A000000"/>
+            <Setter Property="BorderBrush" Value="#65000000"/>
+            <Setter Property="TextElement.Foreground" Value="{DynamicResource NoteTextBrush}"/>
+        </Style>
         
         <!-- Text Shadow -->
         <Style Selector="TextBox.text-shadow">
@@ -88,6 +109,11 @@
             <Setter Property="Effect">
                 <DropShadowEffect BlurRadius="2" OffsetX="0" OffsetY="1" Color="#40000000"/>
             </Setter>
+        </Style>
+
+        <Style Selector="rtb|RichTextBox ScrollViewer#FlowDocSV">
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="VerticalContentAlignment" Value="Top"/>
         </Style>
         
         <!-- Context Menu - All text should be black, no hover effects -->
@@ -250,14 +276,14 @@
                                 Spacing="8"
                                 Margin="0,0,0,6"
                                 VerticalAlignment="Center">
-                        <Button Width="24" Height="22" Padding="0" Click="OnBoldClicked" ToolTip.Tip="Bold (Ctrl/Cmd+B)">
-                            <TextBlock Text="B" FontWeight="Bold" Foreground="#333" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        <Button x:Name="BoldButton" Width="24" Height="22" Padding="0" Classes="format-toggle" Click="OnBoldClicked" ToolTip.Tip="Bold (Ctrl/Cmd+B)">
+                            <TextBlock Text="B" FontFamily="Segoe UI" FontSize="13" FontWeight="Bold" Foreground="{DynamicResource NoteTextBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Button>
-                        <Button Width="24" Height="22" Padding="0" Click="OnItalicClicked" ToolTip.Tip="Italic (Ctrl/Cmd+I)">
-                            <TextBlock Text="I" FontStyle="Italic" Foreground="#333" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        <Button x:Name="ItalicButton" Width="24" Height="22" Padding="0" Classes="format-toggle" Click="OnItalicClicked" ToolTip.Tip="Italic (Ctrl/Cmd+I)">
+                            <TextBlock Text="I" FontFamily="Segoe UI" FontSize="13" FontStyle="Italic" FontWeight="SemiBold" Foreground="{DynamicResource NoteTextBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Button>
-                        <Button Width="24" Height="22" Padding="0" Click="OnUnderlineClicked" ToolTip.Tip="Underline (Ctrl/Cmd+U)">
-                            <TextBlock Text="U" TextDecorations="Underline" Foreground="#333" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        <Button x:Name="UnderlineButton" Width="24" Height="22" Padding="0" Classes="format-toggle" Click="OnUnderlineClicked" ToolTip.Tip="Underline (Ctrl/Cmd+U)">
+                            <TextBlock Text="U" FontFamily="Segoe UI" FontSize="13" TextDecorations="Underline" FontWeight="SemiBold" Foreground="{DynamicResource NoteTextBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Button>
                     </StackPanel>
 
@@ -268,6 +294,7 @@
                                      Foreground="#000000"
                                      FontFamily="{Binding FontFamily}"
                                      FontSize="{Binding FontSize}"
+                                     RenderOptions.TextRenderingMode="SubpixelAntialias"
                                      Padding="0"
                                      BorderThickness="0"
                                      Classes.text-shadow="{Binding EnableTextShadow}"
@@ -300,7 +327,8 @@
                     </rtb:RichTextBox>
 
                     <!-- Debug overlay to visualize resize hit-test regions when enabled -->
-                    <Grid IsHitTestVisible="False"
+                    <Grid Grid.RowSpan="2"
+                          IsHitTestVisible="False"
                           Opacity="0.35"
                           IsVisible="{Binding ShowHitTestOverlay}"
                           ZIndex="10">
@@ -327,6 +355,7 @@
 
                     <!-- Resize Grip (Bottom-Right Corner) -->
                     <Canvas Name="ResizeGrip"
+                            Grid.Row="1"
                             VerticalAlignment="Bottom"
                             HorizontalAlignment="Right"
                             Width="20" Height="20"
